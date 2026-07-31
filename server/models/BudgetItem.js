@@ -1,0 +1,16 @@
+const mongoose = require('mongoose');
+
+const budgetItemSchema = new mongoose.Schema({
+  user:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  document:   { type: mongoose.Schema.Types.ObjectId, ref: 'Document', required: true },
+  title:      { type: String, required: true },
+  department: { type: String, required: true },
+  sector:     { type: String, required: true },
+  amount:     { type: Number, required: true, default: 0 },
+  fiscalYear: { type: String, required: true },
+  district:   { type: String },
+  page:       { type: Number, default: 1 },
+  confidence: { type: Number, default: 0.9 },
+}, { timestamps: true });
+
+module.exports = mongoose.model('BudgetItem', budgetItemSchema);

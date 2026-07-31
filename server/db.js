@@ -1,0 +1,30 @@
+/**
+ * Database abstraction layer.
+ *
+ * When MONGODB_URI is set AND a live MongoDB server is reachable,
+ * we use Mongoose. Otherwise we fall back to an in-memory JSON store
+ * so the demo works perfectly in any sandbox environment.
+ */
+const mongoose = require('mongoose');
+
+let mode = 'memory'; // 'mongo' | 'memory'
+
+async function connect() {
+  const uri = process.env.MONGODB_URI;
+  if (uri) {
+    try {
+      await mongoose.connect(uri, { serverSelectionTimeoutMS: 3000 });
+      mode = 'mongo';
+      console.log('✓ MongoDB connected');
+      return;
+    } catch (err) {
+      console.log(`⚠ MongoDB unavailable (${err.message}), using in-memory store`);
+    }
+  } else {
+    console.log('⚠ No MONGODB_URI, using in-memory store');
+  }
+}
+
+function getMode() { return mode; }
+
+module.exports = { connect, getMode };
