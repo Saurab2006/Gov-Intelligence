@@ -18,4 +18,8 @@ const documentSchema = new mongoose.Schema({
   keywords:      [String],
 }, { timestamps: true });
 
+documentSchema.index({ user: 1, createdAt: -1 });
+documentSchema.index({ user: 1, fiscalYear: 1 });
+documentSchema.index({ user: 1, docType: 1, status: 1 });
+
 module.exports = mongoose.model('Document', documentSchema);

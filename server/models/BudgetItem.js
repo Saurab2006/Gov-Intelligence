@@ -13,4 +13,8 @@ const budgetItemSchema = new mongoose.Schema({
   confidence: { type: Number, default: 0.9 },
 }, { timestamps: true });
 
+budgetItemSchema.index({ user: 1, fiscalYear: 1, sector: 1 });
+budgetItemSchema.index({ user: 1, amount: -1 });
+budgetItemSchema.index({ title: 'text', department: 'text', district: 'text' });
+
 module.exports = mongoose.model('BudgetItem', budgetItemSchema);

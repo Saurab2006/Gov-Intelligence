@@ -13,7 +13,10 @@ async function connect() {
   const uri = process.env.MONGODB_URI;
   if (uri) {
     try {
-      await mongoose.connect(uri, { serverSelectionTimeoutMS: 3000 });
+      await mongoose.connect(uri, {
+        dbName: process.env.MONGODB_DB || undefined,
+        serverSelectionTimeoutMS: 5000,
+      });
       mode = 'mongo';
       console.log('✓ MongoDB connected');
       return;

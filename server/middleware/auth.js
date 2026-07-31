@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { JWT_SECRET } = require('../utils/token');
 
 const protect = async (req, res, next) => {
   const header = req.headers.authorization;
@@ -7,8 +8,8 @@ const protect = async (req, res, next) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
+    const decoded = jwt.verify(header.split(' ')[1], JWT_SECRET);
+    const user = await User.findById(decoded.id);
     if (!user || user.status !== 'active') return res.status(401).json({ error: 'User not found or suspended' });
     req.user = user;
     next();

@@ -11,4 +11,7 @@ const projectSchema = new mongoose.Schema({
   fiscalYear: { type: String },
 }, { timestamps: true });
 
+projectSchema.index({ user: 1, sector: 1, status: 1 });
+projectSchema.index({ user: 1, fiscalYear: 1 });
+
 module.exports = mongoose.model('Project', projectSchema);

@@ -12,6 +12,8 @@ const userSchema = new mongoose.Schema({
   status:       { type: String, enum: ['active', 'suspended'], default: 'active' },
 }, { timestamps: true });
 
+userSchema.index({ role: 1, status: 1 });
+
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 12);

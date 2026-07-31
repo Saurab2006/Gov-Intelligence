@@ -21,7 +21,7 @@ router.post('/signup', async (req, res) => {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       password,
-      role: isFirst ? 'admin' : (['admin', 'analyst', 'researcher'].includes(role) ? role : 'analyst'),
+      role: isFirst ? 'admin' : (['analyst', 'researcher'].includes(role) ? role : 'researcher'),
       organization: organization || 'Independent',
     });
 

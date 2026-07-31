@@ -4,6 +4,11 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { connect, getMode } = require('./db');
 const store = require('./memstore');
+const authRoutes = require('./routes/auth');
+const analyticsRoutes = require('./routes/analytics');
+const budgetRoutes = require('./routes/budgets');
+const departmentRoutes = require('./routes/departments');
+const userRoutes = require('./routes/users');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'govinsight-nepal-jwt-secret';
 
@@ -32,8 +37,23 @@ const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '12mb' }));
 
+function useMongoRoutes(path, router) {
+  app.use(path, (req, res, next) => {
+    if (getMode() !== 'mongo') return next();
+    return router(req, res, next);
+  });
+}
+
 // Health
-app.get('/api/health', (_, res) => res.json({ ok: true }));
+app.get('/api/health', (_, res) => res.json({ ok: true, database: getMode() }));
+
+// Use persistent MongoDB routes when MONGODB_URI is reachable. The existing
+// memory routes below keep the app usable without a local database.
+useMongoRoutes('/api/auth', authRoutes);
+useMongoRoutes('/api/analytics', analyticsRoutes);
+useMongoRoutes('/api/budgets', budgetRoutes);
+useMongoRoutes('/api/departments', departmentRoutes);
+useMongoRoutes('/api/users', userRoutes);
 
 // ---- AUTH ----
 app.post('/api/auth/signup', async (req, res) => {
@@ -44,7 +64,7 @@ app.post('/api/auth/signup', async (req, res) => {
     const exists = await store.findUserByEmail(email.toLowerCase().trim());
     if (exists) return res.status(409).json({ error: 'An account with this email already exists' });
     const isFirst = store.userCount() === 0;
-    const user = await store.createUser({ name: name.trim(), email, password, role: isFirst ? 'admin' : (['analyst', 'researcher'].includes(role) ? role : 'analyst'), organization });
+    const user = await store.createUser({ name: name.trim(), email, password, role: isFirst ? 'admin' : (['analyst', 'researcher'].includes(role) ? role : 'researcher'), organization });
     const token = signToken(user);
     store.seedForUser(user._id);
     res.status(201).json({ user: store.toPublic(user), token });
@@ -119,6 +139,41 @@ app.get('/api/analytics', protect, (req, res) => {
 app.get('/api/budgets', protect, (req, res) => {
   const items = store.filterBudgets(req.user._id, req.query);
   res.json({ items });
+});
+
+app.get('/api/budgets/changes', protect, (req, res) => {
+  res.json({ changes: store.getBudgetChanges(req.user, req.query) });
+});
+
+app.post('/api/budgets/:id/changes', protect, (req, res) => {
+  if (req.user.role !== 'analyst') return res.status(403).json({ error: 'Only analysts can propose data changes' });
+
+  const allowed = ['title', 'department', 'sector', 'amount', 'fiscalYear', 'district'];
+  const proposed = {};
+  allowed.forEach(key => {
+    if (req.body[key] !== undefined && req.body[key] !== '') proposed[key] = req.body[key];
+  });
+
+  if (proposed.amount !== undefined) {
+    proposed.amount = Number(proposed.amount);
+    if (!Number.isFinite(proposed.amount) || proposed.amount < 0) {
+      return res.status(422).json({ error: 'Amount must be a valid positive number' });
+    }
+  }
+
+  if (Object.keys(proposed).length === 0) return res.status(422).json({ error: 'Add at least one proposed change' });
+
+  const change = store.createBudgetChange(req.user._id, req.params.id, req.user._id, proposed, req.body.reason);
+  if (!change) return res.status(404).json({ error: 'Budget item not found' });
+  res.status(201).json({ change });
+});
+
+app.patch('/api/budgets/changes/:id', protect, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins can approve or reject changes' });
+  if (!['approved', 'rejected'].includes(req.body.status)) return res.status(422).json({ error: 'Status must be approved or rejected' });
+  const change = store.reviewBudgetChange(req.params.id, req.user._id, req.body.status);
+  if (!change) return res.status(404).json({ error: 'Pending change request not found' });
+  res.json({ change });
 });
 
 // ---- DEPARTMENTS ----

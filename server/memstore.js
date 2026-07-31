@@ -14,6 +14,7 @@ const documents = [];
 const budgetItems = [];
 const projects = [];
 const activities = [];
+const changeRequests = [];
 
 // ---- seed data ----
 const SECTORS = ['Roads & Transport', 'Health', 'Education', 'Drinking Water', 'Agriculture', 'Energy', 'Urban Development', 'Disaster Management'];
@@ -112,6 +113,53 @@ const store = {
       const doc = documents.find(d => d._id === b.document);
       return { ...b, documentId: doc?._id, documentTitle: doc?.title };
     });
+  },
+
+  createBudgetChange(userId, budgetItemId, requestedBy, proposed, reason) {
+    const item = budgetItems.find(b => b._id === budgetItemId && b.user === userId);
+    if (!item) return null;
+    const change = {
+      _id: id(),
+      user: userId,
+      budgetItem: item._id,
+      requestedBy,
+      status: 'pending',
+      reason: reason || '',
+      proposed,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    changeRequests.push(change);
+    activities.push({ _id: id(), user: requestedBy, type: 'change-request', message: `Proposed a budget update for "${item.title}"`, createdAt: now() });
+    return change;
+  },
+  getBudgetChanges(user, { status = 'all', limit = 100 } = {}) {
+    let result = user.role === 'admin'
+      ? changeRequests
+      : changeRequests.filter(c => c.requestedBy === user._id);
+    if (status !== 'all') result = result.filter(c => c.status === status);
+    return result
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, Number(limit) || 100)
+      .map(c => ({
+        ...c,
+        budgetItem: budgetItems.find(b => b._id === c.budgetItem) || null,
+        requestedBy: store.toPublic(users.find(u => u._id === c.requestedBy) || {}),
+        reviewedBy: c.reviewedBy ? store.toPublic(users.find(u => u._id === c.reviewedBy) || {}) : null,
+      }));
+  },
+  reviewBudgetChange(changeId, reviewerId, status) {
+    const change = changeRequests.find(c => c._id === changeId);
+    if (!change || change.status !== 'pending') return null;
+    const item = budgetItems.find(b => b._id === change.budgetItem);
+    if (!item) return null;
+    change.status = status;
+    change.reviewedBy = reviewerId;
+    change.reviewedAt = now();
+    change.updatedAt = now();
+    if (status === 'approved') Object.assign(item, change.proposed, { updatedAt: now() });
+    activities.push({ _id: id(), user: change.user, type: 'approval', message: `${status === 'approved' ? 'Approved' : 'Rejected'} budget update for "${item.title}"`, createdAt: now() });
+    return change;
   },
 
   // Users (admin)

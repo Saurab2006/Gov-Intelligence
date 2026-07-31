@@ -21,7 +21,7 @@ export default function SignupPage() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm({
-    defaultValues: { name: '', email: '', password: '', confirmPassword: '', role: 'analyst' },
+    defaultValues: { name: '', email: '', password: '', confirmPassword: '', role: 'researcher' },
   });
 
   const onSubmit = async (values) => {
