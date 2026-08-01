@@ -75,14 +75,6 @@ export default function SignupPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-[14px] font-bold text-[#13294e] mb-2">Role</label>
-              <select className="w-full h-[48px] px-4 rounded-xl border border-[#d5e0ee] bg-white text-[14px] text-[#13294e] outline-none transition-all focus:border-[#2e7cf6] focus:ring-4 focus:ring-[#2e7cf6]/10 appearance-none" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238da3be' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px' }} {...register('role')}>
-                <option value="analyst">Analyst — upload & process</option>
-                <option value="researcher">Researcher — search & report</option>
-              </select>
-            </div>
-
             <button type="submit" disabled={isSubmitting} className="w-full h-[50px] rounded-xl bg-[#7ec8d5] text-[15px] font-bold text-[#0c3550] hover:bg-[#6cc0cf] active:translate-y-[0.5px] transition-all disabled:opacity-60 shadow-sm">
               {isSubmitting ? 'Creating…' : 'Create Account'}
             </button>

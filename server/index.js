@@ -63,8 +63,11 @@ app.post('/api/auth/signup', async (req, res) => {
     if (password.length < 6) return res.status(422).json({ error: 'Password must be at least 6 characters' });
     const exists = await store.findUserByEmail(email.toLowerCase().trim());
     if (exists) return res.status(409).json({ error: 'An account with this email already exists' });
+    // Public signup only ever creates the first account as admin, or a normal
+    // (researcher/viewer) account after that. Analyst access is granted only
+    // by an existing admin from User Management — never through signup.
     const isFirst = store.userCount() === 0;
-    const user = await store.createUser({ name: name.trim(), email, password, role: isFirst ? 'admin' : (['analyst', 'researcher'].includes(role) ? role : 'researcher'), organization });
+    const user = await store.createUser({ name: name.trim(), email, password, role: isFirst ? 'admin' : 'researcher', organization });
     const token = signToken(user);
     store.seedForUser(user._id);
     res.status(201).json({ user: store.toPublic(user), token });
@@ -79,7 +82,7 @@ app.post('/api/auth/login', async (req, res) => {
     // Auto-provision demo accounts
     if (!user && email.endsWith('@govinsight.np')) {
       const roleMap = { 'admin@govinsight.np': 'admin', 'analyst@govinsight.np': 'analyst', 'researcher@govinsight.np': 'researcher' };
-      const names = { 'admin@govinsight.np': 'Anisha Adhikari', 'analyst@govinsight.np': 'Bikash Thapa', 'researcher@govinsight.np': 'Sunita Rai' };
+      const names = { 'admin@govinsight.np': 'Saurabh', 'analyst@govinsight.np': 'Raja', 'researcher@govinsight.np': 'Anup' };
       const demoRole = roleMap[email] || 'analyst';
       user = await store.createUser({ name: names[email] || 'Demo User', email, password: password, role: demoRole, organization: 'GovInsight Nepal' });
       store.seedForUser(user._id);

@@ -23,9 +23,7 @@ export function AuthProvider({ children }) {
     const data = await post('/api/auth/login', values);
     saveToken(data.token);
     setUser(data.user);
-    // Route based on role
-    const home = data.user.role === 'admin' ? '/dashboard' : data.user.role === 'researcher' ? '/dashboard' : '/dashboard';
-    router.push(home);
+    router.push('/dashboard');
     return data.user;
   }, [router]);
 
