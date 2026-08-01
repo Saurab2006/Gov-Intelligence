@@ -1,7 +1,3 @@
-/**
- * In-memory document store that mirrors the Mongoose model API just enough
- * for all the routes to work unchanged. Data persists for the process lifetime.
- */
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 
@@ -36,10 +32,9 @@ function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6d2b7
 function pick(r, arr) { return arr[Math.floor(r() * arr.length)]; }
 
 function seedForUser(userId) {
-  const existingDocs = documents.filter(d => d.user === userId);
-  if (existingDocs.length >= 6) return 0;
+  if (documents.length > 0) return 0;
 
-  const r = rng(userId.charCodeAt(0) * 31 + Date.now() % 10000);
+  const r = rng(Date.now());
   let created = 0;
 
   for (const spec of DOCS_SPEC) {
@@ -88,7 +83,8 @@ const store = {
   async findUserByEmail(email) { return users.find(u => u.email === email) || null; },
   async createUser({ name, email, password, role, organization }) {
     const hashed = await bcrypt.hash(password, 12);
-    const u = { _id: id(), name, email: email.toLowerCase().trim(), password: hashed, role, organization: organization || 'Independent', jobTitle: role === 'admin' ? 'Administrator' : 'Analyst', avatarHue: Math.floor(Math.random() * 360), status: 'active', createdAt: now() };
+    const jobTitle = role === 'admin' ? 'Administrator' : role === 'analyst' ? 'Analyst' : 'Researcher';
+    const u = { _id: id(), name, email: email.toLowerCase().trim(), password: hashed, role, organization: organization || 'Independent', jobTitle, avatarHue: Math.floor(Math.random() * 360), status: 'active', createdAt: now() };
     users.push(u);
     return u;
   },
@@ -100,13 +96,13 @@ const store = {
   seedForUser,
 
   // Analytics
-  getDocuments(userId) { return documents.filter(d => d.user === userId); },
-  getBudgets(userId) { return budgetItems.filter(b => b.user === userId); },
-  getProjects(userId) { return projects.filter(p => p.user === userId); },
-  getActivities(userId) { return activities.filter(a => a.user === userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5); },
-  filterBudgets(userId, { q, sector, fiscalYear, limit = 100 }) {
-    let result = budgetItems.filter(b => b.user === userId);
-    if (q) { const re = new RegExp(q, 'i'); result = result.filter(b => re.test(b.title)); }
+  getDocuments() { return documents; },
+  getBudgets() { return budgetItems; },
+  getProjects() { return projects; },
+  getActivities() { return activities.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5); },
+  filterBudgets({ q, sector, fiscalYear, limit = 100 }) {
+    let result = budgetItems.slice();
+    if (q) { const re = new RegExp(q, 'i'); result = result.filter(b => re.test(b.title) || re.test(b.district || '')); }
     if (sector && sector !== 'all') result = result.filter(b => b.sector === sector);
     if (fiscalYear && fiscalYear !== 'all') result = result.filter(b => b.fiscalYear === fiscalYear);
     return result.sort((a, b) => b.amount - a.amount).slice(0, limit).map(b => {
@@ -115,12 +111,12 @@ const store = {
     });
   },
 
-  createBudgetChange(userId, budgetItemId, requestedBy, proposed, reason) {
-    const item = budgetItems.find(b => b._id === budgetItemId && b.user === userId);
+  createBudgetChange(budgetItemId, requestedBy, proposed, reason) {
+    const item = budgetItems.find(b => b._id === budgetItemId);
     if (!item) return null;
     const change = {
       _id: id(),
-      user: userId,
+      type: 'edit',
       budgetItem: item._id,
       requestedBy,
       status: 'pending',
@@ -131,6 +127,22 @@ const store = {
     };
     changeRequests.push(change);
     activities.push({ _id: id(), user: requestedBy, type: 'change-request', message: `Proposed a budget update for "${item.title}"`, createdAt: now() });
+    return change;
+  },
+  createBudgetChangeNew(requestedBy, proposed, reason) {
+    const change = {
+      _id: id(),
+      type: 'create',
+      budgetItem: null,
+      requestedBy,
+      status: 'pending',
+      reason: reason || '',
+      proposed,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    changeRequests.push(change);
+    activities.push({ _id: id(), user: requestedBy, type: 'change-request', message: `Proposed a new budget record: "${proposed.title}"`, createdAt: now() });
     return change;
   },
   getBudgetChanges(user, { status = 'all', limit = 100 } = {}) {
@@ -151,6 +163,37 @@ const store = {
   reviewBudgetChange(changeId, reviewerId, status) {
     const change = changeRequests.find(c => c._id === changeId);
     if (!change || change.status !== 'pending') return null;
+
+    if (change.type === 'create') {
+      change.status = status;
+      change.reviewedBy = reviewerId;
+      change.reviewedAt = now();
+      change.updatedAt = now();
+      if (status === 'approved') {
+        const p = change.proposed;
+        const docId = id();
+        documents.push({
+          _id: docId, user: change.requestedBy, title: `${p.title} — Manually Added Record`,
+          docType: 'manual-entry', fiscalYear: p.fiscalYear, district: p.district || '',
+          fileName: null, fileSize: 0, organization: p.district || 'Manual Entry', status: 'completed',
+          pageCount: 0, totalBudget: p.amount,
+          summary: `Manually added record for ${p.district || 'an unspecified district'}, FY ${p.fiscalYear}.`,
+          highlights: [], keywords: ['manual', (p.district || '').toLowerCase()],
+          createdAt: now(), updatedAt: now(),
+        });
+        const newItem = {
+          _id: id(), user: change.requestedBy, document: docId,
+          title: p.title, department: p.department, sector: p.sector,
+          amount: p.amount, fiscalYear: p.fiscalYear, district: p.district || '',
+          page: 1, confidence: 1,
+        };
+        budgetItems.push(newItem);
+        change.budgetItem = newItem._id;
+      }
+      activities.push({ _id: id(), user: change.requestedBy, type: 'approval', message: `${status === 'approved' ? 'Approved a new budget record' : 'Rejected a new budget record proposal'}: "${change.proposed.title}"`, createdAt: now() });
+      return change;
+    }
+
     const item = budgetItems.find(b => b._id === change.budgetItem);
     if (!item) return null;
     change.status = status;
@@ -158,7 +201,7 @@ const store = {
     change.reviewedAt = now();
     change.updatedAt = now();
     if (status === 'approved') Object.assign(item, change.proposed, { updatedAt: now() });
-    activities.push({ _id: id(), user: change.user, type: 'approval', message: `${status === 'approved' ? 'Approved' : 'Rejected'} budget update for "${item.title}"`, createdAt: now() });
+    activities.push({ _id: id(), user: change.requestedBy, type: 'approval', message: `${status === 'approved' ? 'Approved' : 'Rejected'} budget update for "${item.title}"`, createdAt: now() });
     return change;
   },
 

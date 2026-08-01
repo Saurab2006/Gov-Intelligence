@@ -19,6 +19,7 @@ export default function BudgetPage() {
   const [q, setQ] = useState('');
   const [sector, setSector] = useState('all');
   const [selected, setSelected] = useState(null);
+  const [creating, setCreating] = useState(false);
   const [proposal, setProposal] = useState(emptyProposal);
 
   const canPropose = user?.role === 'analyst';
@@ -53,6 +54,7 @@ export default function BudgetPage() {
 
   const selectItem = (item) => {
     if (!canPropose) return;
+    setCreating(false);
     setSelected(item);
     setProposal({
       title: item.title || '',
@@ -65,14 +67,27 @@ export default function BudgetPage() {
     });
   };
 
+  const startCreate = () => {
+    if (!canPropose) return;
+    setSelected(null);
+    setCreating(true);
+    setProposal(emptyProposal);
+  };
+
   const submitProposal = async (event) => {
     event.preventDefault();
-    if (!selected) return;
+    if (!selected && !creating) return;
     setSaving(true);
     try {
-      await post(`/api/budgets/${selected._id}/changes`, proposal);
-      toast.success('Change sent for admin approval');
-      setSelected(null);
+      if (creating) {
+        await post('/api/budgets/changes', proposal);
+        toast.success('New record proposed — sent for admin approval');
+        setCreating(false);
+      } else {
+        await post(`/api/budgets/${selected._id}/changes`, proposal);
+        toast.success('Change sent for admin approval');
+        setSelected(null);
+      }
       setProposal(emptyProposal);
       loadChanges();
     } catch (err) {
@@ -112,6 +127,9 @@ export default function BudgetPage() {
               <option value="all">All sectors</option>
               {sectors.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            {canPropose && (
+              <button onClick={startCreate} className="h-10 px-4 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 whitespace-nowrap">+ Add new record</button>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -156,15 +174,15 @@ export default function BudgetPage() {
           {canPropose && (
             <form onSubmit={submitProposal} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
               <div>
-                <h2 className="text-sm font-bold text-gray-900">Propose Data Change</h2>
-                <p className="text-xs text-gray-500 mt-1">{selected ? 'Edit fields and submit for admin approval.' : 'Select a budget line to start.'}</p>
+                <h2 className="text-sm font-bold text-gray-900">{creating ? 'Add New Budget Record' : 'Propose Data Change'}</h2>
+                <p className="text-xs text-gray-500 mt-1">{creating ? 'Fill in the new record and submit for admin approval.' : selected ? 'Edit fields and submit for admin approval.' : 'Select a budget line to start, or add a new record.'}</p>
               </div>
               {['title', 'department', 'sector', 'fiscalYear', 'district'].map(field => (
-                <input key={field} disabled={!selected} value={proposal[field]} onChange={e => setProposal(p => ({ ...p, [field]: e.target.value }))} placeholder={field} className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-500 disabled:bg-gray-50 disabled:text-gray-400" />
+                <input key={field} disabled={!selected && !creating} value={proposal[field]} onChange={e => setProposal(p => ({ ...p, [field]: e.target.value }))} placeholder={field} className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-500 disabled:bg-gray-50 disabled:text-gray-400" />
               ))}
-              <input disabled={!selected} type="number" value={proposal.amount} onChange={e => setProposal(p => ({ ...p, amount: e.target.value }))} placeholder="amount" className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-500 disabled:bg-gray-50 disabled:text-gray-400" />
-              <textarea disabled={!selected} value={proposal.reason} onChange={e => setProposal(p => ({ ...p, reason: e.target.value }))} placeholder="Reason for change" className="w-full min-h-[82px] px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-500 disabled:bg-gray-50 disabled:text-gray-400" />
-              <button disabled={!selected || saving} className="w-full h-10 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center gap-2"><Send className="w-4 h-4" />Submit proposal</button>
+              <input disabled={!selected && !creating} type="number" value={proposal.amount} onChange={e => setProposal(p => ({ ...p, amount: e.target.value }))} placeholder="amount" className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-500 disabled:bg-gray-50 disabled:text-gray-400" />
+              <textarea disabled={!selected && !creating} value={proposal.reason} onChange={e => setProposal(p => ({ ...p, reason: e.target.value }))} placeholder="Reason for change" className="w-full min-h-[82px] px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-500 disabled:bg-gray-50 disabled:text-gray-400" />
+              <button disabled={(!selected && !creating) || saving} className="w-full h-10 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center gap-2"><Send className="w-4 h-4" />{creating ? 'Submit new record' : 'Submit proposal'}</button>
             </form>
           )}
 
@@ -179,7 +197,10 @@ export default function BudgetPage() {
                 ) : changes.map(change => (
                   <div key={change._id} className="p-5 space-y-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">{change.budgetItem?.title || 'Budget item'}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-gray-900">{change.budgetItem?.title || change.proposed?.title || 'New budget record'}</p>
+                        {change.type === 'create' && <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5">New</span>}
+                      </div>
                       {change.requestedBy?.name && <p className="text-xs text-gray-400">By {change.requestedBy.name}</p>}
                     </div>
                     <div className="space-y-1 text-xs text-gray-600">

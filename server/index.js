@@ -103,11 +103,10 @@ app.get('/api/auth/me', protect, (req, res) => {
 
 // ---- ANALYTICS ----
 app.get('/api/analytics', protect, (req, res) => {
-  const uid = req.user._id;
-  const docs = store.getDocuments(uid);
-  const budgets = store.getBudgets(uid);
-  const projs = store.getProjects(uid);
-  const acts = store.getActivities(uid);
+  const docs = store.getDocuments();
+  const budgets = store.getBudgets();
+  const projs = store.getProjects();
+  const acts = store.getActivities();
 
   const totalBudget = docs.reduce((a, d) => a + (d.totalBudget || 0), 0);
   const deptSet = new Set(budgets.map(b => b.department));
@@ -140,7 +139,7 @@ app.get('/api/analytics', protect, (req, res) => {
 
 // ---- BUDGETS ----
 app.get('/api/budgets', protect, (req, res) => {
-  const items = store.filterBudgets(req.user._id, req.query);
+  const items = store.filterBudgets(req.query);
   res.json({ items });
 });
 
@@ -166,8 +165,26 @@ app.post('/api/budgets/:id/changes', protect, (req, res) => {
 
   if (Object.keys(proposed).length === 0) return res.status(422).json({ error: 'Add at least one proposed change' });
 
-  const change = store.createBudgetChange(req.user._id, req.params.id, req.user._id, proposed, req.body.reason);
+  const change = store.createBudgetChange(req.params.id, req.user._id, proposed, req.body.reason);
   if (!change) return res.status(404).json({ error: 'Budget item not found' });
+  res.status(201).json({ change });
+});
+
+// Propose a brand-new budget record (not an edit to an existing line) — e.g.
+// data for a municipality or fiscal year that isn't in the system yet.
+app.post('/api/budgets/changes', protect, (req, res) => {
+  if (req.user.role !== 'analyst') return res.status(403).json({ error: 'Only analysts can propose new records' });
+
+  const { title, department, sector, amount, fiscalYear, district, reason } = req.body;
+  if (!title || !department || !sector || !fiscalYear) {
+    return res.status(422).json({ error: 'Title, department, sector, and fiscal year are required' });
+  }
+  const amountNum = Number(amount);
+  if (!Number.isFinite(amountNum) || amountNum < 0) {
+    return res.status(422).json({ error: 'Amount must be a valid positive number' });
+  }
+
+  const change = store.createBudgetChangeNew(req.user._id, { title, department, sector, amount: amountNum, fiscalYear, district: district || '' }, reason);
   res.status(201).json({ change });
 });
 
@@ -181,7 +198,7 @@ app.patch('/api/budgets/changes/:id', protect, (req, res) => {
 
 // ---- DEPARTMENTS ----
 app.get('/api/departments', protect, (req, res) => {
-  const budgets = store.getBudgets(req.user._id);
+  const budgets = store.getBudgets();
   const name = req.query.name;
 
   const map = {};

@@ -128,7 +128,7 @@ export default function DashboardPage() {
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Recent Activity</h3>
-            <p className="text-xs text-gray-400">Latest 5 events in your workspace</p>
+            <p className="text-xs text-gray-400">Latest 5 platform-wide events</p>
           </div>
         </div>
         <ul className="divide-y divide-gray-50">
