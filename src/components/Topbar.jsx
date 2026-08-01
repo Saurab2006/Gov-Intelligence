@@ -4,6 +4,7 @@ import { LogOut, Search } from 'lucide-react';
 import { initials } from '@/lib/format';
 import { Home } from 'lucide-react';
 import Link from 'next/link';
+import NotificationBell from './NotificationBell';
 
 export default function Topbar() {
   const { user, logout } = useAuth();
@@ -26,6 +27,7 @@ export default function Topbar() {
       </div>
 
       <div className="flex items-center gap-3">
+        <NotificationBell />
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: `linear-gradient(135deg, hsl(${user.avatarHue} 65% 52%), hsl(${(user.avatarHue + 40) % 360} 60% 45%))` }}>
             {initials(user.name)}

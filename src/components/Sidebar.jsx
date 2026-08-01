@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Table2, Building2, BarChart3, Sparkles, Settings, Shield, Users, Home } from 'lucide-react';
+import { LayoutDashboard, Table2, Building2, BarChart3, Sparkles, Settings, Shield, Users, Home, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/format';
 
@@ -9,6 +9,7 @@ const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/budget', label: 'Budget Explorer', icon: Table2 },
   { href: '/departments', label: 'Departments', icon: Building2 },
+  { href: '/issues', label: 'Community Reports', icon: AlertTriangle },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/reports', label: 'Reports', icon: Sparkles },
 ];

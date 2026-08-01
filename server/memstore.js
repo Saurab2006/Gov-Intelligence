@@ -11,6 +11,29 @@ const budgetItems = [];
 const projects = [];
 const activities = [];
 const changeRequests = [];
+const reports = [];
+const notifications = [];
+
+// ---- civic reporting reference data ----
+const REPORT_CATEGORIES = [
+  { value: 'flood', label: 'Flood / Waterlogging', baseDays: 3 },
+  { value: 'road-damage', label: 'Road Damage / Pothole', baseDays: 7 },
+  { value: 'tunnel-blockage', label: 'Tunnel Blockage / Overflow', baseDays: 2 },
+  { value: 'bridge-damage', label: 'Bridge Damage', baseDays: 10 },
+  { value: 'landslide', label: 'Landslide', baseDays: 5 },
+  { value: 'drainage', label: 'Drainage / Sewerage', baseDays: 4 },
+  { value: 'electrical', label: 'Electrical Hazard', baseDays: 1 },
+  { value: 'water-supply', label: 'Water Supply Disruption', baseDays: 3 },
+  { value: 'other', label: 'Other', baseDays: 5 },
+];
+const REPORT_AUTHORITIES = [
+  'Department of Roads',
+  'Municipal Ward Office',
+  'Disaster Management Authority',
+  'Water Supply & Sewerage Corporation',
+  'Urban Development Dept',
+  'Electricity Authority',
+];
 
 // ---- seed data ----
 const SECTORS = ['Roads & Transport', 'Health', 'Education', 'Drinking Water', 'Agriculture', 'Energy', 'Urban Development', 'Disaster Management'];
@@ -30,6 +53,46 @@ const SUBJECTS = ['Ward Office', 'Road Section', 'Health Post', 'School Block', 
 
 function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function pick(r, arr) { return arr[Math.floor(r() * arr.length)]; }
+
+// ---- civic reporting helpers ----
+
+// Lightweight rule-based "AI" estimator: takes the category's typical repair
+// window and adjusts it by how urgent the citizen marked the problem.
+// (Stands in for a model call — swap for a real completion if ever wired up.)
+function estimateDays(category, severity) {
+  const spec = REPORT_CATEGORIES.find(c => c.value === category) || REPORT_CATEGORIES[REPORT_CATEGORIES.length - 1];
+  const factor = { critical: 0.5, high: 0.75, medium: 1, low: 1.3 }[severity] ?? 1;
+  return Math.max(1, Math.round(spec.baseDays * factor));
+}
+
+function addDays(days) { const d = new Date(); d.setDate(d.getDate() + Number(days || 0)); return d.toISOString(); }
+
+function normalizeText(s) { return (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean); }
+
+// Two reports are treated as "the same problem" when they share a category,
+// sit in the same district, and their location text overlaps meaningfully —
+// this is what lets many citizen reports of one broken tunnel collapse into
+// a single work item instead of flooding the queue with duplicates.
+function textOverlap(a, b) {
+  const wa = new Set(normalizeText(a));
+  const wb = new Set(normalizeText(b));
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let shared = 0;
+  wa.forEach(w => { if (wb.has(w)) shared++; });
+  return shared / Math.min(wa.size, wb.size);
+}
+
+function findDuplicateCandidate(category, location) {
+  const cutoff = Date.now() - 21 * 24 * 60 * 60 * 1000; // look back 3 weeks
+  return reports.find(r =>
+    !r.duplicateOf &&
+    r.category === category &&
+    !['completed', 'rejected'].includes(r.status) &&
+    (r.location.district || '').toLowerCase() === (location.district || '').toLowerCase() &&
+    new Date(r.createdAt).getTime() > cutoff &&
+    textOverlap(r.location.address, location.address) >= 0.4
+  ) || null;
+}
 
 function seedForUser(userId) {
   if (documents.length > 0) return 0;
@@ -222,6 +285,191 @@ const store = {
 
   // Token lookup
   findUserById(userId) { return users.find(u => u._id === userId) || null; },
+
+  // ---- Civic reports (flood / road / tunnel etc.) ----
+  reportMeta() { return { categories: REPORT_CATEGORIES, authorities: REPORT_AUTHORITIES }; },
+
+  publicReport(r) {
+    const reporter = users.find(u => u._id === r.reportedBy);
+    const original = r.duplicateOf ? reports.find(x => x._id === r.duplicateOf) : null;
+    return {
+      ...r,
+      reportedBy: reporter ? store.toPublic(reporter) : null,
+      duplicateOfTitle: original ? original.title : null,
+      timeline: r.timeline.map(t => ({ ...t, by: (users.find(u => u._id === t.by) && store.toPublic(users.find(u => u._id === t.by))) || null })),
+    };
+  },
+
+  createReport(userId, { title, category, description, severity, location, reporterContact }) {
+    const spec = REPORT_CATEGORIES.find(c => c.value === category);
+    if (!spec) return { error: 'Unknown category' };
+    if (!title || !description || !location?.address) return { error: 'Title, description and address are required' };
+
+    const dup = findDuplicateCandidate(category, location);
+    const days = estimateDays(category, severity);
+    const report = {
+      _id: id(),
+      title: title.trim(),
+      category,
+      description: description.trim(),
+      severity: severity || 'medium',
+      location: { address: location.address || '', district: location.district || '', municipality: location.municipality || '', ward: location.ward || '', lat: location.lat ?? null, lng: location.lng ?? null },
+      reportedBy: userId,
+      reporterContact: reporterContact || '',
+      status: dup ? 'duplicate' : 'pending',
+      estimatedDays: dup ? dup.estimatedDays : days,
+      dueDate: dup ? dup.dueDate : addDays(days),
+      completedAt: null,
+      assignedDepartment: dup ? dup.assignedDepartment : '',
+      assignedContact: dup ? dup.assignedContact : '',
+      assignedBy: null,
+      isFake: false,
+      fakeReason: '',
+      duplicateOf: dup ? dup._id : null,
+      confirmations: 1,
+      timeline: [{ action: dup ? 'reported (matched to existing issue)' : 'reported', note: dup ? `Linked to an existing report: "${dup.title}"` : `AI-suggested resolution window: ${days} day(s)`, by: userId, at: now() }],
+      createdAt: now(), updatedAt: now(),
+    };
+    reports.push(report);
+
+    if (dup) {
+      dup.confirmations += 1;
+      dup.updatedAt = now();
+      dup.timeline.push({ action: 'duplicate-confirmed', note: `Another citizen reported the same issue (${dup.confirmations} reports total)`, by: userId, at: now() });
+      // Let whoever is already handling the original know it's escalating.
+      if (dup.assignedBy) store.createNotification(dup.assignedBy, { type: 'duplicate', title: 'Another report on an active issue', message: `"${dup.title}" now has ${dup.confirmations} citizen reports.`, link: `/issues/${dup._id}`, report: dup._id });
+    } else {
+      store.notifyRoles(['admin', 'analyst'], { type: 'new-report', title: 'New community report', message: `${title.trim()} — ${location.address}${location.district ? ', ' + location.district : ''}`, link: `/issues/${report._id}`, report: report._id });
+    }
+    activities.push({ _id: id(), user: userId, type: 'report', message: `Reported a ${spec.label.toLowerCase()} issue: "${title.trim()}"`, createdAt: now() });
+    return { report: store.publicReport(report) };
+  },
+
+  listReports(user, { status = 'all', category = 'all', district = '', mine = false, flagged = false, limit = 200 } = {}) {
+    let result = reports.slice();
+    // Citizens / researchers only ever see their own submissions; staff see everything.
+    if (user.role === 'researcher' || mine === 'true' || mine === true) {
+      result = result.filter(r => r.reportedBy === user._id);
+    }
+    if (status !== 'all') result = result.filter(r => r.status === status);
+    if (category !== 'all') result = result.filter(r => r.category === category);
+    if (district) { const re = new RegExp(district, 'i'); result = result.filter(r => re.test(r.location.district || '')); }
+    if (flagged === 'true' || flagged === true) result = result.filter(r => r.isFake);
+    return result
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, Number(limit) || 200)
+      .map(store.publicReport);
+  },
+
+  reportStats(user) {
+    const scope = user.role === 'researcher' ? reports.filter(r => r.reportedBy === user._id) : reports;
+    const active = scope.filter(r => !['completed', 'rejected', 'duplicate'].includes(r.status));
+    return {
+      total: scope.length,
+      pending: scope.filter(r => r.status === 'pending').length,
+      active: active.length,
+      completed: scope.filter(r => r.status === 'completed').length,
+      flagged: scope.filter(r => r.isFake).length,
+      duplicates: scope.filter(r => r.duplicateOf).length,
+    };
+  },
+
+  getReport(reportId, user) {
+    const r = reports.find(x => x._id === reportId);
+    if (!r) return null;
+    if (user.role === 'researcher' && r.reportedBy !== user._id) return null;
+    const duplicates = reports.filter(x => x.duplicateOf === r._id).map(store.publicReport);
+    return { ...store.publicReport(r), duplicates };
+  },
+
+  // Single workflow entrypoint used by analysts/admins to move a report
+  // forward: verify -> assign an authority -> (optionally re-estimate the
+  // timeline) -> tick complete. Every transition is timestamped and the
+  // reporter (plus anyone who confirmed the same issue) gets notified.
+  updateReport(reportId, actingUser, action, payload = {}) {
+    const r = reports.find(x => x._id === reportId);
+    if (!r) return { error: 'Report not found' };
+    if (!['admin', 'analyst'].includes(actingUser.role)) return { error: 'Only analysts or admins can manage reports' };
+
+    const confirmers = () => reports.filter(x => x._id === r._id || x.duplicateOf === r._id).map(x => x.reportedBy);
+    const notifyReporters = (payload2) => confirmers().forEach(uid => store.createNotification(uid, { ...payload2, link: `/issues/${r._id}`, report: r._id }));
+
+    if (action === 'verify') {
+      r.status = 'verified';
+      r.timeline.push({ action: 'verified', note: payload.note || 'Confirmed as a genuine issue', by: actingUser._id, at: now() });
+      notifyReporters({ type: 'verified', title: 'Your report was verified', message: `"${r.title}" has been confirmed and is being reviewed.` });
+    } else if (action === 'assign') {
+      if (!payload.assignedDepartment) return { error: 'Choose an authority to assign this to' };
+      r.assignedDepartment = payload.assignedDepartment;
+      r.assignedContact = payload.assignedContact || '';
+      r.assignedBy = actingUser._id;
+      r.status = 'assigned';
+      r.timeline.push({ action: 'assigned', note: `Handed to ${payload.assignedDepartment}${payload.assignedContact ? ` (${payload.assignedContact})` : ''}`, by: actingUser._id, at: now() });
+      notifyReporters({ type: 'assigned', title: 'Your report was assigned', message: `"${r.title}" was assigned to ${payload.assignedDepartment}.` });
+    } else if (action === 'set-eta') {
+      const days = Number(payload.estimatedDays);
+      if (!Number.isFinite(days) || days <= 0) return { error: 'Enter a valid number of days' };
+      r.estimatedDays = days;
+      r.dueDate = addDays(days);
+      r.status = r.status === 'pending' ? 'verified' : r.status;
+      r.timeline.push({ action: 'eta-updated', note: `Analyst revised the estimate to ${days} day(s)${payload.note ? ` — ${payload.note}` : ''}`, by: actingUser._id, at: now() });
+      notifyReporters({ type: 'eta-updated', title: 'Estimated completion updated', message: `"${r.title}" is now expected to be resolved in ${days} day(s).` });
+    } else if (action === 'start') {
+      r.status = 'in-progress';
+      r.timeline.push({ action: 'in-progress', note: payload.note || 'Work has started on site', by: actingUser._id, at: now() });
+      notifyReporters({ type: 'eta-updated', title: 'Work has started', message: `Crews have started work on "${r.title}".` });
+    } else if (action === 'complete') {
+      r.status = 'completed';
+      r.completedAt = now();
+      r.timeline.push({ action: 'completed', note: payload.note || 'Marked complete by analyst', by: actingUser._id, at: now() });
+      notifyReporters({ type: 'completed', title: 'Issue resolved', message: `Good news — "${r.title}" has been marked complete.` });
+      store.notifyRoles(['admin'], { type: 'completed', title: 'Report closed', message: `${actingUser.name} closed "${r.title}".`, link: `/issues/${r._id}`, report: r._id });
+    } else if (action === 'mark-fake') {
+      if (!payload.reason) return { error: 'Give a reason so it can be reviewed later' };
+      r.isFake = true;
+      r.fakeReason = payload.reason;
+      r.status = 'rejected';
+      r.timeline.push({ action: 'flagged-fake', note: payload.reason, by: actingUser._id, at: now() });
+      store.createNotification(r.reportedBy, { type: 'flagged-fake', title: 'Your report was closed', message: `"${r.title}" was reviewed and closed: ${payload.reason}`, link: `/issues/${r._id}`, report: r._id });
+    } else if (action === 'mark-duplicate') {
+      const target = reports.find(x => x._id === payload.duplicateOf);
+      if (!target || target._id === r._id) return { error: 'Pick a valid original report' };
+      r.duplicateOf = target._id;
+      r.status = 'duplicate';
+      target.confirmations += 1;
+      r.timeline.push({ action: 'marked-duplicate', note: `Merged into "${target.title}"`, by: actingUser._id, at: now() });
+      store.createNotification(r.reportedBy, { type: 'duplicate', title: 'Report merged', message: `Your report was merged with an existing one: "${target.title}", which is already being tracked.`, link: `/issues/${target._id}`, report: target._id });
+    } else {
+      return { error: 'Unknown action' };
+    }
+    r.updatedAt = now();
+    return { report: store.publicReport(r) };
+  },
+
+  // ---- Notifications ----
+  createNotification(userId, { type, title, message, link = '', report = null }) {
+    if (!userId) return null;
+    const n = { _id: id(), user: userId, type, title, message, link, read: false, report, createdAt: now() };
+    notifications.push(n);
+    return n;
+  },
+  notifyRoles(roles, payload) {
+    users.filter(u => roles.includes(u.role)).forEach(u => store.createNotification(u._id, payload));
+  },
+  getNotifications(userId, { limit = 50 } = {}) {
+    const mine = notifications.filter(n => n.user === userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return { notifications: mine.slice(0, Number(limit) || 50), unreadCount: mine.filter(n => !n.read).length };
+  },
+  markNotificationRead(notificationId, userId) {
+    const n = notifications.find(x => x._id === notificationId && x.user === userId);
+    if (!n) return null;
+    n.read = true;
+    return n;
+  },
+  markAllNotificationsRead(userId) {
+    notifications.filter(n => n.user === userId).forEach(n => { n.read = true; });
+    return true;
+  },
 };
 
 module.exports = store;

@@ -9,6 +9,8 @@ const analyticsRoutes = require('./routes/analytics');
 const budgetRoutes = require('./routes/budgets');
 const departmentRoutes = require('./routes/departments');
 const userRoutes = require('./routes/users');
+const reportRoutes = require('./routes/reports');
+const notificationRoutes = require('./routes/notifications');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'govinsight-nepal-jwt-secret';
 
@@ -54,6 +56,8 @@ useMongoRoutes('/api/analytics', analyticsRoutes);
 useMongoRoutes('/api/budgets', budgetRoutes);
 useMongoRoutes('/api/departments', departmentRoutes);
 useMongoRoutes('/api/users', userRoutes);
+useMongoRoutes('/api/reports', reportRoutes);
+useMongoRoutes('/api/notifications', notificationRoutes);
 
 // ---- AUTH ----
 app.post('/api/auth/signup', async (req, res) => {
@@ -234,6 +238,57 @@ app.patch('/api/users/:id', protect, (req, res) => {
   const updated = store.updateUser(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: 'User not found' });
   res.json({ user: updated });
+});
+
+// ---- COMMUNITY REPORTS (flood / road damage / tunnel blockage etc.) ----
+app.get('/api/reports/meta', protect, (req, res) => {
+  res.json(store.reportMeta());
+});
+
+app.get('/api/reports/stats', protect, (req, res) => {
+  res.json(store.reportStats(req.user));
+});
+
+app.get('/api/reports', protect, (req, res) => {
+  res.json({ reports: store.listReports(req.user, req.query) });
+});
+
+app.post('/api/reports', protect, (req, res) => {
+  const result = store.createReport(req.user._id, req.body || {});
+  if (result.error) return res.status(422).json({ error: result.error });
+  res.status(201).json(result);
+});
+
+app.get('/api/reports/:id', protect, (req, res) => {
+  const report = store.getReport(req.params.id, req.user);
+  if (!report) return res.status(404).json({ error: 'Report not found' });
+  res.json({ report });
+});
+
+// Single endpoint for the analyst/admin workflow: verify, assign to an
+// authority, revise the AI-suggested ETA, start work, mark complete, or
+// flag as fake/duplicate. `action` selects the transition.
+app.patch('/api/reports/:id', protect, (req, res) => {
+  const { action, ...payload } = req.body || {};
+  const result = store.updateReport(req.params.id, req.user, action, payload);
+  if (result.error) return res.status(422).json({ error: result.error });
+  res.json(result);
+});
+
+// ---- NOTIFICATIONS ----
+app.get('/api/notifications', protect, (req, res) => {
+  res.json(store.getNotifications(req.user._id, req.query));
+});
+
+app.patch('/api/notifications/:id', protect, (req, res) => {
+  const n = store.markNotificationRead(req.params.id, req.user._id);
+  if (!n) return res.status(404).json({ error: 'Notification not found' });
+  res.json({ notification: n });
+});
+
+app.patch('/api/notifications', protect, (req, res) => {
+  store.markAllNotificationsRead(req.user._id);
+  res.json({ ok: true });
 });
 
 const PORT = process.env.PORT || 5000;
