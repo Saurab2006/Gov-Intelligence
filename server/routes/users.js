@@ -22,13 +22,27 @@ router.get('/', protect, requireRole('admin'), async (req, res) => {
 // PATCH /api/users/:id — admin only
 router.patch('/:id', protect, requireRole('admin'), async (req, res) => {
   try {
-    const { role, status } = req.body;
+    const { role, status, verificationStatus } = req.body;
     const update = {};
     if (role && ['admin', 'analyst', 'researcher'].includes(role)) update.role = role;
     if (status && ['active', 'suspended'].includes(status)) update.status = status;
+    if (verificationStatus && ['pending', 'verified', 'rejected'].includes(verificationStatus)) update.verificationStatus = verificationStatus;
     const user = await User.findByIdAndUpdate(req.params.id, update, { new: true }).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ user: user.toPublic() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/users/:id/citizenship-doc — admin/analyst only. Lets staff verify
+// a citizen's identity, e.g. before/after flagging one of their reports as fake.
+router.get('/:id/citizenship-doc', protect, requireRole('admin', 'analyst'), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('citizenshipDoc citizenshipDocName name verificationStatus');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.citizenshipDoc) return res.status(404).json({ error: 'No citizenship document on file' });
+    res.json({ citizenshipDoc: user.citizenshipDoc, citizenshipDocName: user.citizenshipDocName, name: user.name, verificationStatus: user.verificationStatus });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

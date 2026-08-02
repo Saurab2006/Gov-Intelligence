@@ -89,7 +89,7 @@ router.get('/', protect, async (req, res) => {
     if (district) filter['location.district'] = new RegExp(district, 'i');
     if (flagged === 'true') filter.isFake = true;
     const items = await IncidentReport.find(filter).sort({ createdAt: -1 }).limit(200)
-      .populate('reportedBy', 'name email role organization avatarHue')
+      .populate('reportedBy', 'name email role organization avatarHue verificationStatus')
       .populate('timeline.by', 'name email role avatarHue');
     res.json({ reports: items });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -102,6 +102,8 @@ router.post('/', protect, async (req, res) => {
     const spec = REPORT_CATEGORIES.find(c => c.value === category);
     if (!spec) return res.status(422).json({ error: 'Unknown category' });
     if (!title || !description || !location?.address) return res.status(422).json({ error: 'Title, description and address are required' });
+    if (!reporterContact || !reporterContact.trim()) return res.status(422).json({ error: 'A contact number is required so authorities can reach you about this report' });
+    if (location?.lat == null || location?.lng == null) return res.status(422).json({ error: 'Please pin your live location — it is required to submit a report' });
 
     const dup = await findDuplicateCandidate(category, location);
     const days = estimateDays(category, severity);
@@ -132,7 +134,7 @@ router.post('/', protect, async (req, res) => {
 
 router.get('/:id', protect, async (req, res) => {
   try {
-    const report = await IncidentReport.findById(req.params.id).populate('reportedBy', 'name email role organization avatarHue').populate('timeline.by', 'name email role avatarHue');
+    const report = await IncidentReport.findById(req.params.id).populate('reportedBy', 'name email role organization avatarHue verificationStatus').populate('timeline.by', 'name email role avatarHue');
     if (!report) return res.status(404).json({ error: 'Report not found' });
     if (req.user.role === 'researcher' && String(report.reportedBy._id) !== String(req.user._id)) return res.status(404).json({ error: 'Report not found' });
     const duplicates = await IncidentReport.find({ duplicateOf: report._id }).populate('reportedBy', 'name email role avatarHue');

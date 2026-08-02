@@ -9,7 +9,7 @@ const router = express.Router();
 // POST /api/auth/signup
 router.post('/signup', async (req, res) => {
   try {
-    const { name, email, password, role, organization } = req.body;
+    const { name, email, password, role, organization, citizenshipDoc, citizenshipDocName } = req.body;
     if (!name || !email || !password) return res.status(422).json({ error: 'Name, email and password are required' });
     if (password.length < 6) return res.status(422).json({ error: 'Password must be at least 6 characters' });
 
@@ -17,12 +17,24 @@ router.post('/signup', async (req, res) => {
     if (exists) return res.status(409).json({ error: 'An account with this email already exists' });
 
     const isFirst = (await User.countDocuments()) === 0;
+    const finalRole = isFirst ? 'admin' : (['analyst', 'researcher'].includes(role) ? role : 'researcher');
+
+    // Citizens signing up to submit community reports must verify their
+    // identity with a citizenship document, so admins/analysts can trace a
+    // report back to a real, verified person if it's ever flagged as fake.
+    if (finalRole === 'researcher' && !citizenshipDoc) {
+      return res.status(422).json({ error: 'Please upload your citizenship certificate or national ID to verify your identity' });
+    }
+
     const user = await User.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
       password,
-      role: isFirst ? 'admin' : (['analyst', 'researcher'].includes(role) ? role : 'researcher'),
+      role: finalRole,
       organization: organization || 'Independent',
+      citizenshipDoc: finalRole === 'researcher' ? citizenshipDoc : '',
+      citizenshipDocName: finalRole === 'researcher' ? (citizenshipDocName || '') : '',
+      verificationStatus: finalRole === 'researcher' ? 'pending' : 'n/a',
     });
 
     const token = signToken(user);

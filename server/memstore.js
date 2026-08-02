@@ -159,16 +159,31 @@ function seedForUser(userId) {
 const store = {
   // Auth
   async findUserByEmail(email) { return users.find(u => u.email === email) || null; },
-  async createUser({ name, email, password, role, organization }) {
+  async createUser({ name, email, password, role, organization, citizenshipDoc, citizenshipDocName }) {
     const hashed = await bcrypt.hash(password, 12);
     const jobTitle = role === 'admin' ? 'Administrator' : role === 'analyst' ? 'Analyst' : 'Researcher';
-    const u = { _id: id(), name, email: email.toLowerCase().trim(), password: hashed, role, organization: organization || 'Independent', jobTitle, avatarHue: Math.floor(Math.random() * 360), status: 'active', createdAt: now() };
+    const u = {
+      _id: id(), name, email: email.toLowerCase().trim(), password: hashed, role,
+      organization: organization || 'Independent', jobTitle, avatarHue: Math.floor(Math.random() * 360),
+      status: 'active', createdAt: now(),
+      citizenshipDoc: role === 'researcher' ? (citizenshipDoc || '') : '',
+      citizenshipDocName: role === 'researcher' ? (citizenshipDocName || '') : '',
+      verificationStatus: role === 'researcher' ? 'pending' : 'n/a',
+    };
     users.push(u);
     return u;
   },
   async comparePassword(user, candidate) { return bcrypt.compare(candidate, user.password); },
   userCount() { return users.length; },
-  toPublic(u) { const { password, ...rest } = u; return rest; },
+  toPublic(u) {
+    const { password, citizenshipDoc, ...rest } = u;
+    return { ...rest, hasCitizenshipDoc: !!citizenshipDoc };
+  },
+  getCitizenshipDoc(userId) {
+    const u = users.find(u => u._id === userId);
+    if (!u) return null;
+    return { citizenshipDoc: u.citizenshipDoc || '', citizenshipDocName: u.citizenshipDocName || '' };
+  },
 
   // Seed
   seedForUser,
@@ -295,6 +310,7 @@ const store = {
     if (!u) return null;
     if (updates.role) u.role = updates.role;
     if (updates.status) u.status = updates.status;
+    if (updates.verificationStatus && ['pending', 'verified', 'rejected'].includes(updates.verificationStatus)) u.verificationStatus = updates.verificationStatus;
     return store.toPublic(u);
   },
 
@@ -322,6 +338,8 @@ const store = {
     const spec = REPORT_CATEGORIES.find(c => c.value === category);
     if (!spec) return { error: 'Unknown category' };
     if (!title || !description || !location?.address) return { error: 'Title, description and address are required' };
+    if (!reporterContact || !reporterContact.trim()) return { error: 'A contact number is required so authorities can reach you about this report' };
+    if (location?.lat == null || location?.lng == null) return { error: 'Please pin your live location — it is required to submit a report' };
 
     const dup = findDuplicateCandidate(category, location);
     const days = estimateDays(category, severity);

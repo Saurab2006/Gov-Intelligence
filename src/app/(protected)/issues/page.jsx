@@ -183,6 +183,8 @@ function ReportForm({ meta, onClose, onCreated }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!form.title.trim() || !form.description.trim() || !form.address.trim()) { toast.error('Title, description and address are required'); return; }
+    if (!form.reporterContact.trim()) { toast.error('Please add a contact number — it\'s required so authorities can reach you'); return; }
+    if (!coords) { toast.error('Please pin your live location — it\'s required to submit a report'); return; }
     setSubmitting(true);
     try {
       const { report } = await post('/api/reports', {
@@ -229,17 +231,21 @@ function ReportForm({ meta, onClose, onCreated }) {
           <Field label="Location / landmark">
             <input value={form.address} onChange={e => set('address', e.target.value)} placeholder="e.g. Kalanki tunnel, Ring Road" className="input" />
           </Field>
-          <button type="button" onClick={captureLocation} disabled={locating} className="h-9 px-3 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 disabled:opacity-60">
-            {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : coords ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Crosshair className="w-3.5 h-3.5" />}
-            {coords ? 'Location pinned — tap to update' : 'Pin my current location (for the map)'}
-          </button>
+          <div>
+            <button type="button" onClick={captureLocation} disabled={locating} className={cn('h-9 px-3 rounded-lg border text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60', coords ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100')}>
+              {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : coords ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Crosshair className="w-3.5 h-3.5" />}
+              {coords ? 'Live location pinned — tap to update' : 'Pin my live location (required)'}
+            </button>
+            {!coords && <p className="mt-1 text-[11px] text-gray-400">We need your live GPS location so field teams can find the exact spot.</p>}
+          </div>
           <div className="grid grid-cols-3 gap-3">
             <Field label="District"><input value={form.district} onChange={e => set('district', e.target.value)} className="input" /></Field>
             <Field label="Municipality"><input value={form.municipality} onChange={e => set('municipality', e.target.value)} className="input" /></Field>
             <Field label="Ward"><input value={form.ward} onChange={e => set('ward', e.target.value)} className="input" /></Field>
           </div>
-          <Field label="Your contact (optional)">
-            <input value={form.reporterContact} onChange={e => set('reporterContact', e.target.value)} placeholder="Phone or email, if you want a callback" className="input" />
+          <Field label="Your contact number (required)">
+            <input value={form.reporterContact} onChange={e => set('reporterContact', e.target.value)} placeholder="e.g. 98XXXXXXXX" className="input" required />
+            <span className="block mt-1 text-[11px] text-gray-400">Used to reach you for follow-up and to verify this isn't a fake report.</span>
           </Field>
         </div>
         <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2 sticky bottom-0 bg-white">

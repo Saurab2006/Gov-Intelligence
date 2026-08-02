@@ -65,7 +65,7 @@ useMongoRoutes('/api/authorities', authorityRoutes);
 // ---- AUTH ----
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { name, email, password, role, organization } = req.body;
+    const { name, email, password, role, organization, citizenshipDoc, citizenshipDocName } = req.body;
     if (!name || !email || !password) return res.status(422).json({ error: 'Name, email and password are required' });
     if (password.length < 6) return res.status(422).json({ error: 'Password must be at least 6 characters' });
     const exists = await store.findUserByEmail(email.toLowerCase().trim());
@@ -74,7 +74,15 @@ app.post('/api/auth/signup', async (req, res) => {
     // (researcher/viewer) account after that. Analyst access is granted only
     // by an existing admin from User Management — never through signup.
     const isFirst = store.userCount() === 0;
-    const user = await store.createUser({ name: name.trim(), email, password, role: isFirst ? 'admin' : 'researcher', organization });
+    const finalRole = isFirst ? 'admin' : 'researcher';
+
+    // Citizens must verify identity with a citizenship document so
+    // admins/analysts can trace a report back to a real person if flagged fake.
+    if (finalRole === 'researcher' && !citizenshipDoc) {
+      return res.status(422).json({ error: 'Please upload your citizenship certificate or national ID to verify your identity' });
+    }
+
+    const user = await store.createUser({ name: name.trim(), email, password, role: finalRole, organization, citizenshipDoc, citizenshipDocName });
     const token = signToken(user);
     store.seedForUser(user._id);
     res.status(201).json({ user: store.toPublic(user), token });
@@ -241,6 +249,13 @@ app.patch('/api/users/:id', protect, (req, res) => {
   const updated = store.updateUser(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: 'User not found' });
   res.json({ user: updated });
+});
+
+app.get('/api/users/:id/citizenship-doc', protect, (req, res) => {
+  if (!['admin', 'analyst'].includes(req.user.role)) return res.status(403).json({ error: 'Admin or analyst only' });
+  const doc = store.getCitizenshipDoc(req.params.id);
+  if (!doc || !doc.citizenshipDoc) return res.status(404).json({ error: 'No citizenship document on file' });
+  res.json(doc);
 });
 
 // ---- COMMUNITY REPORTS (flood / road damage / tunnel blockage etc.) ----

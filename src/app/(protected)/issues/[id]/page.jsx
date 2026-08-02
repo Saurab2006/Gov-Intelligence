@@ -6,8 +6,14 @@ import { relativeTime, cn, initials } from '@/lib/format';
 import { toast } from 'sonner';
 import {
   ArrowLeft, MapPin, Clock, Copy, ShieldAlert, CheckCircle2, UserCheck,
-  PlayCircle, Loader2, Star, Map as MapIcon, Radio, Plus,
+  PlayCircle, Loader2, Star, Map as MapIcon, Radio, Plus, ShieldCheck, ShieldQuestion,
 } from 'lucide-react';
+
+const REPORTER_VERIFICATION_STYLE = {
+  verified: { label: 'ID verified', icon: ShieldCheck, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+  pending: { label: 'ID pending review', icon: ShieldQuestion, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+  rejected: { label: 'ID rejected', icon: ShieldAlert, cls: 'bg-red-50 text-red-700 border-red-100' },
+};
 import { useAuth } from '@/context/AuthContext';
 
 const STATUS_STYLE = {
@@ -43,6 +49,7 @@ export default function ReportDetailPage() {
 
   const [authority, setAuthority] = useState(null);
   const [reviews, setReviews] = useState([]);
+  const [showIdDoc, setShowIdDoc] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -88,6 +95,7 @@ export default function ReportDetailPage() {
   const categoryLabel = meta.categories.find(c => c.value === report.category)?.label || report.category;
 
   return (
+    <>
     <div className="max-w-[900px] mx-auto space-y-5">
       <button onClick={() => router.push('/issues')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800"><ArrowLeft className="w-4 h-4" />Back to Community Reports</button>
 
@@ -117,9 +125,17 @@ export default function ReportDetailPage() {
         </div>
 
         {report.reportedBy && (
-          <div className="flex items-center gap-2 pt-2 border-t border-gray-50">
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-50 flex-wrap">
             <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0" style={{ background: `linear-gradient(135deg, hsl(${report.reportedBy.avatarHue} 65% 52%), hsl(${(report.reportedBy.avatarHue + 40) % 360} 60% 45%))` }}>{initials(report.reportedBy.name)}</div>
             <p className="text-xs text-gray-500">Reported by <span className="font-medium text-gray-700">{report.reportedBy.name}</span>{report.reporterContact ? ` · ${report.reporterContact}` : ''}</p>
+            {isStaff && report.reportedBy.verificationStatus && REPORTER_VERIFICATION_STYLE[report.reportedBy.verificationStatus] && (() => {
+              const v = REPORTER_VERIFICATION_STYLE[report.reportedBy.verificationStatus];
+              return (
+                <button type="button" onClick={() => setShowIdDoc(true)} className={cn('inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md border hover:opacity-80', v.cls)}>
+                  <v.icon className="w-3 h-3" />{v.label}
+                </button>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -210,6 +226,43 @@ export default function ReportDetailPage() {
       {report.assignedDepartment && (
         <ReviewsCard authority={authority} authorityName={report.assignedDepartment} reportId={report._id} reviews={reviews} onChanged={refreshReviews} />
       )}
+    </div>
+    {showIdDoc && isStaff && report.reportedBy && (
+      <IdDocModal userId={report.reportedBy._id} userName={report.reportedBy.name} onClose={() => setShowIdDoc(false)} />
+    )}
+    </>
+  );
+}
+
+function IdDocModal({ userId, userName, onClose }) {
+  const [doc, setDoc] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    get(`/api/users/${userId}/citizenship-doc`).then(d => { setDoc(d); setLoading(false); }).catch(e => { setError(e.message); setLoading(false); });
+  }, [userId]);
+
+  const isPdf = doc?.citizenshipDoc?.startsWith('data:application/pdf');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
+          <h3 className="text-sm font-semibold text-gray-900">Identity document — {userName}</h3>
+        </div>
+        <div className="p-5">
+          {loading ? (
+            <div className="h-40 flex items-center justify-center text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
+          ) : error ? (
+            <p className="text-sm text-gray-500">{error}</p>
+          ) : isPdf ? (
+            <a href={doc.citizenshipDoc} target="_blank" rel="noreferrer" className="text-sm text-brand-600 font-medium underline">Open PDF — {doc.citizenshipDocName}</a>
+          ) : (
+            <img src={doc.citizenshipDoc} alt="Citizenship document" className="w-full rounded-xl border border-gray-100" />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
