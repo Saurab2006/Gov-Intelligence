@@ -11,6 +11,8 @@ const departmentRoutes = require('./routes/departments');
 const userRoutes = require('./routes/users');
 const reportRoutes = require('./routes/reports');
 const notificationRoutes = require('./routes/notifications');
+const authorityRoutes = require('./routes/authorities');
+const Authority = require('./models/Authority');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'govinsight-nepal-jwt-secret';
 
@@ -58,6 +60,7 @@ useMongoRoutes('/api/departments', departmentRoutes);
 useMongoRoutes('/api/users', userRoutes);
 useMongoRoutes('/api/reports', reportRoutes);
 useMongoRoutes('/api/notifications', notificationRoutes);
+useMongoRoutes('/api/authorities', authorityRoutes);
 
 // ---- AUTH ----
 app.post('/api/auth/signup', async (req, res) => {
@@ -254,6 +257,7 @@ app.get('/api/reports', protect, (req, res) => {
 });
 
 app.post('/api/reports', protect, (req, res) => {
+  if (req.user.role !== 'researcher') return res.status(403).json({ error: 'Only researchers can submit a community report' });
   const result = store.createReport(req.user._id, req.body || {});
   if (result.error) return res.status(422).json({ error: result.error });
   res.status(201).json(result);
@@ -275,6 +279,35 @@ app.patch('/api/reports/:id', protect, (req, res) => {
   res.json(result);
 });
 
+// ---- AUTHORITIES (admin adds, or the AI area-suggester fills in coverage) ----
+app.get('/api/authorities', protect, (req, res) => {
+  res.json({ authorities: store.listAuthorities(req.query) });
+});
+
+app.post('/api/authorities', protect, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins can add authorities' });
+  const result = store.createAuthority(req.user._id, req.body || {});
+  if (result.error) return res.status(422).json({ error: result.error });
+  res.status(201).json(result);
+});
+
+app.post('/api/authorities/ai-suggest', protect, (req, res) => {
+  if (!['admin', 'analyst'].includes(req.user.role)) return res.status(403).json({ error: 'Only admins or analysts can run area suggestions' });
+  const result = store.aiSuggestAuthorities(req.user._id, (req.body || {}).district);
+  if (result.error) return res.status(422).json({ error: result.error });
+  res.status(201).json(result);
+});
+
+app.get('/api/authorities/:id/reviews', protect, (req, res) => {
+  res.json({ reviews: store.listReviews(req.params.id) });
+});
+
+app.post('/api/authorities/:id/reviews', protect, (req, res) => {
+  const result = store.createReview(req.user._id, req.params.id, req.body || {});
+  if (result.error) return res.status(422).json({ error: result.error });
+  res.status(201).json(result);
+});
+
 // ---- NOTIFICATIONS ----
 app.get('/api/notifications', protect, (req, res) => {
   res.json(store.getNotifications(req.user._id, req.query));
@@ -293,8 +326,19 @@ app.patch('/api/notifications', protect, (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
+const BASE_AUTHORITIES = [
+  'Department of Roads', 'Municipal Ward Office', 'Disaster Management Authority',
+  'Water Supply & Sewerage Corporation', 'Urban Development Dept', 'Electricity Authority',
+];
+
 async function start() {
   await connect();
+  if (getMode() === 'mongo') {
+    const count = await Authority.countDocuments();
+    if (count === 0) {
+      await Authority.insertMany(BASE_AUTHORITIES.map(name => ({ name, department: name, district: '', source: 'seed' })));
+    }
+  }
   app.listen(PORT, () => console.log(`✓ Express API on :${PORT} (${getMode()} mode)`));
 }
 

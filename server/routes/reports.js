@@ -2,6 +2,7 @@ const express = require('express');
 const IncidentReport = require('../models/IncidentReport');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const Authority = require('../models/Authority');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -55,7 +56,13 @@ async function notifyReporters(report, payload) {
   await Notification.insertMany(linked.map(r => ({ user: r.reportedBy, ...payload, report: report._id })));
 }
 
-router.get('/meta', protect, (req, res) => res.json({ categories: REPORT_CATEGORIES, authorities: REPORT_AUTHORITIES }));
+router.get('/meta', protect, async (req, res) => {
+  try {
+    const dbAuthorities = await Authority.find().sort({ name: 1 }).select('name');
+    const names = dbAuthorities.length ? dbAuthorities.map(a => a.name) : REPORT_AUTHORITIES;
+    res.json({ categories: REPORT_CATEGORIES, authorities: names });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 router.get('/stats', protect, async (req, res) => {
   try {
@@ -90,6 +97,7 @@ router.get('/', protect, async (req, res) => {
 
 router.post('/', protect, async (req, res) => {
   try {
+    if (req.user.role !== 'researcher') return res.status(403).json({ error: 'Only researchers can submit a community report' });
     const { title, category, description, severity, location, reporterContact } = req.body;
     const spec = REPORT_CATEGORIES.find(c => c.value === category);
     if (!spec) return res.status(422).json({ error: 'Unknown category' });

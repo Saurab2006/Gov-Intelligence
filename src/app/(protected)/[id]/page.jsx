@@ -1,12 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { get, patch } from '@/lib/api';
+import { get, post, patch } from '@/lib/api';
 import { relativeTime, cn, initials } from '@/lib/format';
 import { toast } from 'sonner';
 import {
   ArrowLeft, MapPin, Clock, Copy, ShieldAlert, CheckCircle2, UserCheck,
-  PlayCircle, Loader2,
+  PlayCircle, Loader2, Star, Map as MapIcon, Radio, Plus,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -19,6 +19,10 @@ const STATUS_STYLE = {
   rejected: 'bg-gray-100 text-gray-500 border-gray-200',
   duplicate: 'bg-gray-100 text-gray-500 border-gray-200',
 };
+
+// Ordered progression used to show the reporter a "live" sense of where the
+// work stands, independent of the free-form timeline notes below it.
+const LIVE_STEPS = ['pending', 'verified', 'assigned', 'in-progress', 'completed'];
 
 export default function ReportDetailPage() {
   const { id } = useParams();
@@ -37,6 +41,9 @@ export default function ReportDetailPage() {
   const [fakeReason, setFakeReason] = useState('');
   const [showFakeBox, setShowFakeBox] = useState(false);
 
+  const [authority, setAuthority] = useState(null);
+  const [reviews, setReviews] = useState([]);
+
   const load = () => {
     setLoading(true);
     Promise.all([get(`/api/reports/${id}`), get('/api/reports/meta')])
@@ -45,6 +52,24 @@ export default function ReportDetailPage() {
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
+  // Once we know which authority this report is assigned to, look up its
+  // profile + reviews so people can see (and rate) how it's performing.
+  useEffect(() => {
+    if (!report?.assignedDepartment) { setAuthority(null); setReviews([]); return; }
+    get('/api/authorities').then(({ authorities }) => {
+      const match = authorities.find(a => a.name === report.assignedDepartment) || null;
+      setAuthority(match);
+      if (match) get(`/api/authorities/${match._id}/reviews`).then(({ reviews }) => setReviews(reviews)).catch(() => {});
+    }).catch(() => {});
+    // eslint-disable-next-line
+  }, [report?.assignedDepartment]);
+
+  const refreshReviews = () => {
+    if (!authority) return;
+    get('/api/authorities').then(({ authorities }) => setAuthority(authorities.find(a => a._id === authority._id) || authority)).catch(() => {});
+    get(`/api/authorities/${authority._id}/reviews`).then(({ reviews }) => setReviews(reviews)).catch(() => {});
+  };
 
   const act = async (action, payload, successMsg) => {
     setBusy(true);
@@ -99,6 +124,10 @@ export default function ReportDetailPage() {
         )}
       </div>
 
+      {!['rejected', 'duplicate'].includes(report.status) && <LiveTrackingCard report={report} />}
+
+      <MapCard location={report.location} />
+
       {isStaff && !['completed', 'rejected'].includes(report.status) && (
         <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-5">
           <h3 className="text-sm font-semibold text-gray-900">Manage this report</h3>
@@ -121,6 +150,13 @@ export default function ReportDetailPage() {
                 <input type="number" min="1" value={etaDays} onChange={e => setEtaDays(e.target.value)} className="w-24 h-9 px-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-brand-500" />
                 <span className="text-xs text-gray-500 self-center">day(s)</span>
                 <button disabled={busy} onClick={() => act('set-eta', { estimatedDays: etaDays }, 'Estimate updated')} className="h-9 px-3 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-gray-800 disabled:opacity-60">Save</button>
+              </div>
+              <div className="flex gap-1.5">
+                {[1, 3, 7].map(extra => (
+                  <button key={extra} type="button" disabled={busy} onClick={() => setEtaDays(String((Number(etaDays) || 0) + extra))} className="h-7 px-2 rounded-md border border-gray-200 text-[11px] font-medium text-gray-600 hover:bg-gray-50 flex items-center gap-1">
+                    <Plus className="w-3 h-3" />{extra}d
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -169,6 +205,136 @@ export default function ReportDetailPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {report.assignedDepartment && (
+        <ReviewsCard authority={authority} authorityName={report.assignedDepartment} reportId={report._id} reviews={reviews} onChanged={refreshReviews} />
+      )}
+    </div>
+  );
+}
+
+function LiveTrackingCard({ report }) {
+  const stepIndex = LIVE_STEPS.indexOf(report.status);
+  const dueDate = report.dueDate ? new Date(report.dueDate) : null;
+  const overdue = dueDate && report.status !== 'completed' && dueDate.getTime() < Date.now();
+  const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><Radio className="w-4 h-4 text-brand-500" />Live tracking</h3>
+        {report.status !== 'completed' && (
+          <span className={cn('text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md', overdue ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600')}>
+            {overdue ? `${Math.abs(daysLeft)} day(s) overdue` : daysLeft != null ? `${daysLeft} day(s) left` : ''}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center">
+        {LIVE_STEPS.map((step, i) => (
+          <div key={step} className="flex items-center flex-1 last:flex-initial">
+            <div className={cn('w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold border-2',
+              i <= stepIndex ? 'bg-brand-500 border-brand-500 text-white' : 'bg-white border-gray-200 text-gray-300')}>
+              {i <= stepIndex ? <CheckCircle2 className="w-3.5 h-3.5" /> : i + 1}
+            </div>
+            {i < LIVE_STEPS.length - 1 && <div className={cn('h-0.5 flex-1 mx-1', i < stepIndex ? 'bg-brand-500' : 'bg-gray-200')} />}
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between text-[10px] font-medium text-gray-400 uppercase tracking-wide -mt-2">
+        {LIVE_STEPS.map(step => <span key={step} className="flex-1 text-center first:text-left last:text-right">{step.replace('-', ' ')}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function MapCard({ location }) {
+  const hasCoords = Number.isFinite(location?.lat) && Number.isFinite(location?.lng);
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-3">
+      <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><MapIcon className="w-4 h-4 text-gray-400" />Location</h3>
+      {hasCoords ? (
+        <div className="rounded-xl overflow-hidden border border-gray-100">
+          <iframe
+            title="Report location"
+            className="w-full h-64"
+            src={`https://www.openstreetmap.org/export/embed.html?bbox=${location.lng - 0.01}%2C${location.lat - 0.01}%2C${location.lng + 0.01}%2C${location.lat + 0.01}&layer=mapnik&marker=${location.lat}%2C${location.lng}`}
+          />
+          <a
+            className="block text-center text-xs text-brand-600 hover:underline py-2 bg-gray-50"
+            href={`https://www.openstreetmap.org/?mlat=${location.lat}&mlon=${location.lng}#map=17/${location.lat}/${location.lng}`}
+            target="_blank" rel="noreferrer"
+          >
+            Open larger map
+          </a>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
+          No GPS coordinates were pinned for this report — only the written address is available.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewsCard({ authority, authorityName, reportId, reviews, onChanged }) {
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitReview = async () => {
+    if (!authority) { toast.error('This authority isn\'t registered yet — ask an admin to add it'); return; }
+    setSubmitting(true);
+    try {
+      await post(`/api/authorities/${authority._id}/reviews`, { rating, comment, report: reportId });
+      toast.success('Review submitted');
+      setComment('');
+      onChanged();
+    } catch (err) { toast.error(err.message); }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-900">Reviews — {authorityName}</h3>
+        {authority && (
+          <span className="flex items-center gap-1 text-xs font-semibold text-amber-600">
+            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />{authority.ratingAvg?.toFixed(1) || '0.0'}
+            <span className="text-gray-400 font-normal">({authority.ratingCount || 0})</span>
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1">
+          {[1, 2, 3, 4, 5].map(n => (
+            <button key={n} type="button" onClick={() => setRating(n)}>
+              <Star className={cn('w-5 h-5', n <= rating ? 'fill-amber-400 text-amber-400' : 'text-gray-200')} />
+            </button>
+          ))}
+        </div>
+        <input value={comment} onChange={e => setComment(e.target.value)} placeholder="How is this authority handling it?" className="flex-1 min-w-[180px] h-9 px-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-brand-500" />
+        <button disabled={submitting} onClick={submitReview} className="h-9 px-3 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-gray-800 disabled:opacity-60">
+          {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Submit review'}
+        </button>
+      </div>
+
+      <div className="space-y-3 pt-2 border-t border-gray-50">
+        {reviews.length === 0 ? (
+          <p className="text-xs text-gray-400">No reviews yet — be the first to rate this authority.</p>
+        ) : reviews.map(r => (
+          <div key={r._id} className="flex items-start justify-between gap-3 text-xs">
+            <div>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map(n => <Star key={n} className={cn('w-3 h-3', n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-200')} />)}
+                <span className="font-medium text-gray-700 ml-1">{r.user?.name || 'User'}</span>
+              </div>
+              {r.comment && <p className="text-gray-500 mt-0.5">{r.comment}</p>}
+            </div>
+            <span className="text-[10px] text-gray-400 shrink-0">{relativeTime(r.createdAt)}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

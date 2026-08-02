@@ -6,7 +6,7 @@ import { relativeTime, cn } from '@/lib/format';
 import { toast } from 'sonner';
 import {
   AlertTriangle, MapPin, Plus, ArrowRight, Clock, Copy, ShieldAlert,
-  Loader2, X,
+  Loader2, X, Crosshair, Check,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -32,6 +32,7 @@ function StatusBadge({ status }) {
 export default function IssuesPage() {
   const { user } = useAuth();
   const isStaff = user?.role === 'admin' || user?.role === 'analyst';
+  const isResearcher = user?.role === 'researcher';
 
   const [meta, setMeta] = useState({ categories: [], authorities: [] });
   const [stats, setStats] = useState(null);
@@ -66,9 +67,11 @@ export default function IssuesPage() {
             {isStaff ? 'Review, assign, and resolve issues reported by citizens' : 'Report a flooded road, blocked tunnel, or other hazard near you'}
           </p>
         </div>
-        <button onClick={() => setShowForm(true)} className="h-10 px-4 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 active:translate-y-px transition-all flex items-center gap-2">
-          <Plus className="w-4 h-4" /> Report an Issue
-        </button>
+        {isResearcher && (
+          <button onClick={() => setShowForm(true)} className="h-10 px-4 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 active:translate-y-px transition-all flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Report an Issue
+          </button>
+        )}
       </div>
 
       {stats && (
@@ -163,7 +166,19 @@ const SEVERITIES = [
 function ReportForm({ meta, onClose, onCreated }) {
   const [form, setForm] = useState({ title: '', category: meta.categories[0]?.value || 'flood', severity: 'medium', description: '', address: '', district: '', municipality: '', ward: '', reporterContact: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [coords, setCoords] = useState(null);
+  const [locating, setLocating] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const captureLocation = () => {
+    if (!navigator.geolocation) { toast.error('Location isn\'t available in this browser'); return; }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setLocating(false); toast.success('Location pinned — this will show on the map'); },
+      () => { setLocating(false); toast.error('Could not get your location'); },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -173,7 +188,7 @@ function ReportForm({ meta, onClose, onCreated }) {
       const { report } = await post('/api/reports', {
         title: form.title, category: form.category, severity: form.severity, description: form.description,
         reporterContact: form.reporterContact,
-        location: { address: form.address, district: form.district, municipality: form.municipality, ward: form.ward },
+        location: { address: form.address, district: form.district, municipality: form.municipality, ward: form.ward, lat: coords?.lat ?? null, lng: coords?.lng ?? null },
       });
       if (report.duplicateOfTitle) {
         toast.success(`Linked to an existing report: "${report.duplicateOfTitle}". You'll be notified when it's resolved.`);
@@ -214,6 +229,10 @@ function ReportForm({ meta, onClose, onCreated }) {
           <Field label="Location / landmark">
             <input value={form.address} onChange={e => set('address', e.target.value)} placeholder="e.g. Kalanki tunnel, Ring Road" className="input" />
           </Field>
+          <button type="button" onClick={captureLocation} disabled={locating} className="h-9 px-3 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 disabled:opacity-60">
+            {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : coords ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Crosshair className="w-3.5 h-3.5" />}
+            {coords ? 'Location pinned — tap to update' : 'Pin my current location (for the map)'}
+          </button>
           <div className="grid grid-cols-3 gap-3">
             <Field label="District"><input value={form.district} onChange={e => set('district', e.target.value)} className="input" /></Field>
             <Field label="Municipality"><input value={form.municipality} onChange={e => set('municipality', e.target.value)} className="input" /></Field>

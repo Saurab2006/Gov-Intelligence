@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { suggestAuthoritiesForArea } = require('./utils/authorityAI');
 
 function id() { return crypto.randomBytes(12).toString('hex'); }
 function now() { return new Date().toISOString(); }
@@ -13,6 +14,8 @@ const activities = [];
 const changeRequests = [];
 const reports = [];
 const notifications = [];
+const authorities = [];
+const reviews = [];
 
 // ---- civic reporting reference data ----
 const REPORT_CATEGORIES = [
@@ -93,6 +96,18 @@ function findDuplicateCandidate(category, location) {
     textOverlap(r.location.address, location.address) >= 0.4
   ) || null;
 }
+
+// Base authorities every fresh install ships with, so "Assign" always has
+// options even before any admin or AI suggestion has run.
+(function seedBaseAuthorities() {
+  REPORT_AUTHORITIES.forEach(name => {
+    authorities.push({
+      _id: id(), name, department: name, district: '', categories: [],
+      contactEmail: '', contactPhone: '', source: 'seed', createdBy: null,
+      ratingAvg: 0, ratingCount: 0, createdAt: now(), updatedAt: now(),
+    });
+  });
+})();
 
 function seedForUser(userId) {
   if (documents.length > 0) return 0;
@@ -287,7 +302,10 @@ const store = {
   findUserById(userId) { return users.find(u => u._id === userId) || null; },
 
   // ---- Civic reports (flood / road / tunnel etc.) ----
-  reportMeta() { return { categories: REPORT_CATEGORIES, authorities: REPORT_AUTHORITIES }; },
+  reportMeta() {
+    const names = authorities.length ? authorities.map(a => a.name) : REPORT_AUTHORITIES;
+    return { categories: REPORT_CATEGORIES, authorities: names };
+  },
 
   publicReport(r) {
     const reporter = users.find(u => u._id === r.reportedBy);
@@ -444,6 +462,59 @@ const store = {
     }
     r.updatedAt = now();
     return { report: store.publicReport(r) };
+  },
+
+  // ---- Authorities ----
+  listAuthorities({ district = '' } = {}) {
+    let result = authorities.slice();
+    if (district) { const re = new RegExp(`^${district}$`, 'i'); result = result.filter(a => re.test(a.district || '')); }
+    return result.sort((a, b) => b.ratingAvg - a.ratingAvg || a.name.localeCompare(b.name));
+  },
+  createAuthority(createdBy, { name, department, district, categories, contactEmail, contactPhone }) {
+    if (!name) return { error: 'Authority name is required' };
+    if (authorities.some(a => a.name === name && (a.district || '') === (district || ''))) {
+      return { error: 'That authority already exists for this district' };
+    }
+    const a = {
+      _id: id(), name, department: department || '', district: district || '',
+      categories: Array.isArray(categories) ? categories : [],
+      contactEmail: contactEmail || '', contactPhone: contactPhone || '',
+      source: 'admin', createdBy, ratingAvg: 0, ratingCount: 0, createdAt: now(), updatedAt: now(),
+    };
+    authorities.push(a);
+    return { authority: a };
+  },
+  // Rule-based "AI" pass: fills in any authority types this district is
+  // missing yet (roads, disaster mgmt, water, electricity, urban dev, ward office).
+  aiSuggestAuthorities(createdBy, district) {
+    if (!district) return { error: 'District is required' };
+    const existingNames = new Set(authorities.filter(a => (a.district || '').toLowerCase() === district.toLowerCase()).map(a => a.name));
+    const toCreate = suggestAuthoritiesForArea(district, existingNames);
+    const created = toCreate.map(spec => {
+      const a = { _id: id(), ...spec, contactEmail: '', contactPhone: '', createdBy, ratingAvg: 0, ratingCount: 0, createdAt: now(), updatedAt: now() };
+      authorities.push(a);
+      return a;
+    });
+    return { created, message: created.length ? `Added ${created.length} authority(ies) for ${district}` : `${district} already has full coverage` };
+  },
+
+  // ---- Reviews ----
+  listReviews(authorityId) {
+    return reviews.filter(r => r.authority === authorityId)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .map(r => ({ ...r, user: store.toPublic(users.find(u => u._id === r.user) || {}) }));
+  },
+  createReview(userId, authorityId, { rating, comment, report }) {
+    const authority = authorities.find(a => a._id === authorityId);
+    if (!authority) return { error: 'Authority not found' };
+    const num = Number(rating);
+    if (!Number.isFinite(num) || num < 1 || num > 5) return { error: 'Rating must be between 1 and 5' };
+    const review = { _id: id(), authority: authorityId, report: report || null, user: userId, rating: num, comment: (comment || '').trim(), createdAt: now(), updatedAt: now() };
+    reviews.push(review);
+    const total = authority.ratingAvg * authority.ratingCount + num;
+    authority.ratingCount += 1;
+    authority.ratingAvg = Math.round((total / authority.ratingCount) * 10) / 10;
+    return { review: { ...review, user: store.toPublic(users.find(u => u._id === userId) || {}) }, authority };
   },
 
   // ---- Notifications ----
