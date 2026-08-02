@@ -39,7 +39,28 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(422).json({ error: 'Email and password are required' });
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    const normalizedEmail = email.toLowerCase().trim();
+    let user = await User.findOne({ email: normalizedEmail });
+
+    // Auto-provision demo accounts (mirrors the in-memory store's behavior)
+    // so the "Admin/Analyst/Researcher Demo" buttons work whether or not
+    // MongoDB is connected.
+    if (!user && normalizedEmail.endsWith('@govinsight.np')) {
+      const roleMap = { 'admin@govinsight.np': 'admin', 'analyst@govinsight.np': 'analyst', 'researcher@govinsight.np': 'researcher' };
+      const names = { 'admin@govinsight.np': 'Saurabh', 'analyst@govinsight.np': 'Raja', 'researcher@govinsight.np': 'Anup' };
+      const demoRole = roleMap[normalizedEmail];
+      if (demoRole) {
+        user = await User.create({
+          name: names[normalizedEmail],
+          email: normalizedEmail,
+          password,
+          role: demoRole,
+          organization: 'GovInsight Nepal',
+        });
+        await seedForUser(user._id);
+      }
+    }
+
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ error: 'Incorrect email or password' });
     }
