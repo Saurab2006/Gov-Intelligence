@@ -10,7 +10,7 @@ export default function AnalyticsPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => { get('/api/analytics').then(d => { setData(d); setLoading(false); }).catch(() => setLoading(false)); }, []);
-  const Sk = ({ h }) => <div className={`shimmer rounded-xl`} style={{ height: h }} />;
+  const Sk = ({ h }) => <div className={`shimmer rounded-xl`} style={{ height: h }} />
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5">
