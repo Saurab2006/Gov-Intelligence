@@ -3,21 +3,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { get, patch, post } from '@/lib/api';
 import { formatNPR } from '@/lib/format';
 import { useAuth } from '@/context/AuthContext';
+import { useTranslation } from '@/context/LanguageContext';
 import { Check, Search, Send, Table2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SECTORS_COLORS = { 'Roads & Transport': '#2563EB', Health: '#10B981', Education: '#8B5CF6', 'Drinking Water': '#06B6D4', Agriculture: '#F59E0B', Energy: '#EF4444', 'Urban Development': '#EC4899', 'Disaster Management': '#F97316' };
 
-const emptyProposal = { title: '', department: '', sector: '', amount: '', fiscalYear: '', district: '', reason: '' };
+const emptyProposal = { title: '', department: '', sector: '', amount: '', fiscalYear: '', district: '', municipality: '', ward: '', reason: '' };
 
 export default function BudgetPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [items, setItems] = useState([]);
   const [changes, setChanges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState('');
   const [sector, setSector] = useState('all');
+  const [ward, setWard] = useState('all');
+  const [wardOptions, setWardOptions] = useState([]);
   const [selected, setSelected] = useState(null);
   const [creating, setCreating] = useState(false);
   const [proposal, setProposal] = useState(emptyProposal);
@@ -36,18 +40,25 @@ export default function BudgetPage() {
     const sp = new URLSearchParams();
     if (q) sp.set('q', q);
     if (sector !== 'all') sp.set('sector', sector);
+    if (ward !== 'all') sp.set('ward', ward);
     setLoading(true);
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       get(`/api/budgets?${sp}`)
         .then(d => { setItems(d.items || []); setLoading(false); })
         .catch(() => setLoading(false));
     }, 300);
-    return () => clearTimeout(t);
-  }, [q, sector]);
+    return () => clearTimeout(timer);
+  }, [q, sector, ward]);
 
   useEffect(() => {
     loadChanges();
   }, [user?.role]);
+
+  useEffect(() => {
+    get('/api/budgets/meta/wards')
+      .then(d => setWardOptions(d.wards || []))
+      .catch(() => {});
+  }, []);
 
   const sectors = useMemo(() => [...new Set(items.map(i => i.sector))].sort(), [items]);
   const total = items.reduce((a, i) => a + i.amount, 0);
@@ -63,6 +74,8 @@ export default function BudgetPage() {
       amount: item.amount || '',
       fiscalYear: item.fiscalYear || '',
       district: item.district || '',
+      municipality: item.municipality || '',
+      ward: item.ward || '',
       reason: '',
     });
   };
@@ -110,7 +123,7 @@ export default function BudgetPage() {
   return (
     <div className="max-w-[1400px] mx-auto space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Budget Explorer</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('budget.title')}</h1>
         <p className="text-sm text-gray-500 mt-1">
           {canPropose ? 'Analysts can propose edits for admin approval' : canApprove ? 'Admins review and approve important data changes' : 'Read-only budget data for normal users'}
         </p>
@@ -121,11 +134,15 @@ export default function BudgetPage() {
           <div className="flex flex-wrap gap-3">
             <div className="relative flex-1 min-w-[240px]">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search line items..." className="w-full h-10 pl-10 pr-4 rounded-xl border border-gray-200 bg-white text-sm focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 outline-none transition-all" />
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('budget.search')} className="w-full h-10 pl-10 pr-4 rounded-xl border border-gray-200 bg-white text-sm focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 outline-none transition-all" />
             </div>
             <select value={sector} onChange={e => setSector(e.target.value)} className="h-10 px-4 rounded-xl border border-gray-200 bg-white text-sm focus:border-brand-500 outline-none min-w-[180px]">
-              <option value="all">All sectors</option>
+              <option value="all">{t('budget.allSectors')}</option>
               {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={ward} onChange={e => setWard(e.target.value)} className="h-10 px-4 rounded-xl border border-gray-200 bg-white text-sm focus:border-brand-500 outline-none min-w-[160px]">
+              <option value="all">{t('budget.allWards')}</option>
+              {wardOptions.map(w => <option key={w} value={w}>{t('budget.ward')} {w}</option>)}
             </select>
             {canPropose && (
               <button onClick={startCreate} className="h-10 px-4 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 whitespace-nowrap">+ Add new record</button>
@@ -144,6 +161,7 @@ export default function BudgetPage() {
                     <th className="px-5 py-3 font-semibold">Line item</th>
                     <th className="px-5 py-3 font-semibold">Department</th>
                     <th className="px-5 py-3 font-semibold">Sector</th>
+                    <th className="px-5 py-3 font-semibold">{t('budget.ward')}</th>
                     <th className="px-5 py-3 font-semibold">FY</th>
                     <th className="px-5 py-3 font-semibold text-right">Amount</th>
                     {canPropose && <th className="px-5 py-3 font-semibold text-right">Action</th>}
@@ -151,14 +169,15 @@ export default function BudgetPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {loading ? Array.from({ length: 8 }).map((_, i) => (
-                    <tr key={i}><td colSpan={canPropose ? 6 : 5} className="px-5 py-4"><div className="shimmer h-4 rounded w-full" /></td></tr>
+                    <tr key={i}><td colSpan={canPropose ? 7 : 6} className="px-5 py-4"><div className="shimmer h-4 rounded w-full" /></td></tr>
                   )) : items.length === 0 ? (
-                    <tr><td colSpan={canPropose ? 6 : 5} className="px-5 py-16 text-center text-gray-400"><Table2 className="w-8 h-8 mx-auto mb-2 text-gray-300" />No budget lines found</td></tr>
+                    <tr><td colSpan={canPropose ? 7 : 6} className="px-5 py-16 text-center text-gray-400"><Table2 className="w-8 h-8 mx-auto mb-2 text-gray-300" />No budget lines found</td></tr>
                   ) : items.map(item => (
                     <tr key={item._id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="px-5 py-3"><p className="font-medium text-gray-900 truncate max-w-[280px]">{item.title}</p>{item.district && <p className="text-xs text-gray-400">{item.district}</p>}</td>
+                      <td className="px-5 py-3"><p className="font-medium text-gray-900 truncate max-w-[280px]">{item.title}</p>{item.district && <p className="text-xs text-gray-400">{item.district}{item.municipality ? ` · ${item.municipality}` : ''}</p>}</td>
                       <td className="px-5 py-3 text-gray-600 truncate max-w-[180px]">{item.department}</td>
                       <td className="px-5 py-3"><span className="flex items-center gap-1.5 text-xs text-gray-600"><span className="w-2 h-2 rounded-sm shrink-0" style={{ background: SECTORS_COLORS[item.sector] || '#2563EB' }} />{item.sector}</span></td>
+                      <td className="px-5 py-3 text-xs text-gray-500">{item.ward ? `${t('budget.ward')} ${item.ward}` : '—'}</td>
                       <td className="px-5 py-3 text-xs text-gray-500">{item.fiscalYear}</td>
                       <td className="px-5 py-3 text-right font-semibold text-gray-900 tabular-nums">{formatNPR(item.amount)}</td>
                       {canPropose && <td className="px-5 py-3 text-right"><button onClick={() => selectItem(item)} className="h-8 px-3 rounded-lg border border-brand-100 bg-brand-50 text-xs font-semibold text-brand-700 hover:bg-brand-100">Propose edit</button></td>}
@@ -177,7 +196,7 @@ export default function BudgetPage() {
                 <h2 className="text-sm font-bold text-gray-900">{creating ? 'Add New Budget Record' : 'Propose Data Change'}</h2>
                 <p className="text-xs text-gray-500 mt-1">{creating ? 'Fill in the new record and submit for admin approval.' : selected ? 'Edit fields and submit for admin approval.' : 'Select a budget line to start, or add a new record.'}</p>
               </div>
-              {['title', 'department', 'sector', 'fiscalYear', 'district'].map(field => (
+              {['title', 'department', 'sector', 'fiscalYear', 'district', 'municipality', 'ward'].map(field => (
                 <input key={field} disabled={!selected && !creating} value={proposal[field]} onChange={e => setProposal(p => ({ ...p, [field]: e.target.value }))} placeholder={field} className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-500 disabled:bg-gray-50 disabled:text-gray-400" />
               ))}
               <input disabled={!selected && !creating} type="number" value={proposal.amount} onChange={e => setProposal(p => ({ ...p, amount: e.target.value }))} placeholder="amount" className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-500 disabled:bg-gray-50 disabled:text-gray-400" />

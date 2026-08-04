@@ -14,6 +14,8 @@ const changeRequestSchema = new mongoose.Schema({
     amount: { type: Number },
     fiscalYear: { type: String, trim: true },
     district: { type: String, trim: true },
+    municipality: { type: String, trim: true },
+    ward: { type: String, trim: true },
   },
   reviewedAt: { type: Date },
 }, { timestamps: true });

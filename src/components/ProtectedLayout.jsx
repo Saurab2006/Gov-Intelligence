@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import OfflineBanner from './OfflineBanner';
 
 export default function ProtectedLayout({ children }) {
   const router = useRouter();
@@ -28,6 +29,7 @@ export default function ProtectedLayout({ children }) {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
+        <OfflineBanner />
         <main className="flex-1 p-6">{children}</main>
       </div>
     </div>

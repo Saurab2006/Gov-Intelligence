@@ -12,7 +12,9 @@ const userRoutes = require('./routes/users');
 const reportRoutes = require('./routes/reports');
 const notificationRoutes = require('./routes/notifications');
 const authorityRoutes = require('./routes/authorities');
+const smsRoutes = require('./routes/sms');
 const Authority = require('./models/Authority');
+const { parseInboundSms, helpText, sendSms, normalizePhone, VALID_CATEGORIES } = require('./utils/sms');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'govinsight-nepal-jwt-secret';
 
@@ -61,6 +63,7 @@ useMongoRoutes('/api/users', userRoutes);
 useMongoRoutes('/api/reports', reportRoutes);
 useMongoRoutes('/api/notifications', notificationRoutes);
 useMongoRoutes('/api/authorities', authorityRoutes);
+useMongoRoutes('/api/sms', smsRoutes);
 
 // ---- AUTH ----
 app.post('/api/auth/signup', async (req, res) => {
@@ -165,7 +168,7 @@ app.get('/api/budgets/changes', protect, (req, res) => {
 app.post('/api/budgets/:id/changes', protect, (req, res) => {
   if (req.user.role !== 'analyst') return res.status(403).json({ error: 'Only analysts can propose data changes' });
 
-  const allowed = ['title', 'department', 'sector', 'amount', 'fiscalYear', 'district'];
+  const allowed = ['title', 'department', 'sector', 'amount', 'fiscalYear', 'district', 'ward'];
   const proposed = {};
   allowed.forEach(key => {
     if (req.body[key] !== undefined && req.body[key] !== '') proposed[key] = req.body[key];
@@ -190,7 +193,7 @@ app.post('/api/budgets/:id/changes', protect, (req, res) => {
 app.post('/api/budgets/changes', protect, (req, res) => {
   if (req.user.role !== 'analyst') return res.status(403).json({ error: 'Only analysts can propose new records' });
 
-  const { title, department, sector, amount, fiscalYear, district, reason } = req.body;
+  const { title, department, sector, amount, fiscalYear, district, ward, reason } = req.body;
   if (!title || !department || !sector || !fiscalYear) {
     return res.status(422).json({ error: 'Title, department, sector, and fiscal year are required' });
   }
@@ -199,7 +202,7 @@ app.post('/api/budgets/changes', protect, (req, res) => {
     return res.status(422).json({ error: 'Amount must be a valid positive number' });
   }
 
-  const change = store.createBudgetChangeNew(req.user._id, { title, department, sector, amount: amountNum, fiscalYear, district: district || '' }, reason);
+  const change = store.createBudgetChangeNew(req.user._id, { title, department, sector, amount: amountNum, fiscalYear, district: district || '', ward: ward || '' }, reason);
   res.status(201).json({ change });
 });
 
@@ -209,6 +212,19 @@ app.patch('/api/budgets/changes/:id', protect, (req, res) => {
   const change = store.reviewBudgetChange(req.params.id, req.user._id, req.body.status);
   if (!change) return res.status(404).json({ error: 'Pending change request not found' });
   res.json({ change });
+});
+
+// Corruption / misuse flagging channel — any signed-in user can flag a
+// budget line as suspicious; only admins can clear the flag after review.
+app.post('/api/budgets/:id/flag', protect, (req, res) => {
+  const result = store.flagBudgetItem(req.params.id, req.user._id, req.body?.reason);
+  if (result.error) return res.status(422).json({ error: result.error });
+  res.status(201).json(result);
+});
+app.delete('/api/budgets/:id/flag', protect, (req, res) => {
+  const result = store.unflagBudgetItem(req.params.id, req.user);
+  if (result.error) return res.status(403).json({ error: result.error });
+  res.json(result);
 });
 
 // ---- DEPARTMENTS ----
@@ -291,6 +307,73 @@ app.patch('/api/reports/:id', protect, (req, res) => {
   const { action, ...payload } = req.body || {};
   const result = store.updateReport(req.params.id, req.user, action, payload);
   if (result.error) return res.status(422).json({ error: result.error });
+  res.json(result);
+});
+
+// ---- SMS REPORTING FALLBACK ----
+// Inbound webhook a carrier (Twilio or equivalent) calls when a citizen
+// texts in. No JWT auth here by design — SMS senders aren't logged into
+// the web app; the phone number itself is the identity. Point your
+// carrier's inbound-SMS webhook at POST /api/sms/inbound.
+app.post('/api/sms/inbound', async (req, res) => {
+  try {
+    const fromRaw = req.body.From || req.body.from || req.body.sender || '';
+    const body = req.body.Body || req.body.body || req.body.text || '';
+    const phone = normalizePhone(fromRaw);
+    if (!phone) return res.status(422).json({ error: 'Missing sender phone number' });
+
+    const cmd = parseInboundSms(body);
+    let reply;
+
+    if (cmd.type === 'help') {
+      reply = helpText();
+    } else if (cmd.type === 'status') {
+      const report = store.getReportForSms(cmd.ref, phone);
+      reply = report
+        ? `Report "${report.title}" — status: ${report.status}${report.assignedDepartment ? ` (${report.assignedDepartment})` : ''}. ID: ${report._id.slice(-6)}`
+        : "No matching report found. Text your report ID, or REPORT to file a new one.";
+    } else if (cmd.type === 'report') {
+      if (!cmd.category) {
+        reply = `Category not recognized. Valid categories: ${VALID_CATEGORIES.join(', ')}`;
+      } else {
+        let smsUser = store.findUserByPhone(phone);
+        if (!smsUser) {
+          // Auto-create a lightweight, phone-verified citizen account so the
+          // report has an owner and the sender can check status later. No
+          // password/email — this account can only be used via SMS.
+          smsUser = store.createSmsUser(phone);
+        }
+        const result = store.createReport(smsUser._id, {
+          title: cmd.description.slice(0, 80) || `${cmd.category} report`,
+          category: cmd.category,
+          description: cmd.description || cmd.category,
+          severity: 'medium',
+          location: { address: cmd.district || 'Unspecified (via SMS)', district: cmd.district || '' },
+          reporterContact: phone,
+          viaSms: true,
+        });
+        reply = result.error
+          ? `Could not file report: ${result.error}`
+          : `Report received. ID: ${result.report._id.slice(-6)}. Text STATUS ${result.report._id.slice(-6)} to check progress.`;
+      }
+    } else {
+      reply = `Unrecognized message. Text HELP for commands.\n${helpText()}`;
+    }
+
+    await sendSms(fromRaw, reply);
+    res.json({ ok: true, reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin-only: send a manual/test SMS (used to verify carrier config from Settings).
+app.post('/api/sms/send-test', protect, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins can send test SMS' });
+  const { to, message } = req.body || {};
+  if (!to || !message) return res.status(422).json({ error: 'to and message are required' });
+  const result = await sendSms(to, message);
+  if (!result.ok) return res.status(502).json({ error: result.error || 'SMS send failed' });
   res.json(result);
 });
 

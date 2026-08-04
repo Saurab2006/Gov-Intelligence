@@ -9,12 +9,15 @@ const budgetItemSchema = new mongoose.Schema({
   amount:     { type: Number, required: true, default: 0 },
   fiscalYear: { type: String, required: true },
   district:   { type: String },
+  municipality: { type: String },
+  ward:       { type: String },
   page:       { type: Number, default: 1 },
   confidence: { type: Number, default: 0.9 },
 }, { timestamps: true });
 
 budgetItemSchema.index({ user: 1, fiscalYear: 1, sector: 1 });
 budgetItemSchema.index({ user: 1, amount: -1 });
-budgetItemSchema.index({ title: 'text', department: 'text', district: 'text' });
+budgetItemSchema.index({ district: 1, municipality: 1, ward: 1 });
+budgetItemSchema.index({ title: 'text', department: 'text', district: 'text', municipality: 'text', ward: 'text' });
 
 module.exports = mongoose.model('BudgetItem', budgetItemSchema);

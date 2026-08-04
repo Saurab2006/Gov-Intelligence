@@ -1,6 +1,7 @@
 'use client';
 import { useAuth } from '@/context/AuthContext';
-import { LogOut, Search } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
+import { LogOut, Search, Languages } from 'lucide-react';
 import { initials } from '@/lib/format';
 import { Home } from 'lucide-react';
 import Link from 'next/link';
@@ -8,6 +9,7 @@ import NotificationBell from './NotificationBell';
 
 export default function Topbar() {
   const { user, logout } = useAuth();
+  const { locale, toggleLocale, t } = useLanguage();
   if (!user) return null;
 
   return (
@@ -22,11 +24,19 @@ export default function Topbar() {
       <div className="flex-1 flex justify-center">
         <div className="relative w-full max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input placeholder="Search budgets, departments, projects…" className="w-full h-10 pl-10 pr-4 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 focus:bg-white transition-all" />
+          <input placeholder={t('topbar.search')} className="w-full h-10 pl-10 pr-4 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 focus:bg-white transition-all" />
         </div>
       </div>
 
       <div className="flex items-center gap-3">
+        <button
+          onClick={toggleLocale}
+          title={t('topbar.language')}
+          className="h-9 px-3 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:text-brand-600 transition-colors flex items-center gap-1.5"
+        >
+          <Languages className="w-3.5 h-3.5" />
+          {locale === 'en' ? 'नेपाली' : 'English'}
+        </button>
         <NotificationBell />
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: `linear-gradient(135deg, hsl(${user.avatarHue} 65% 52%), hsl(${(user.avatarHue + 40) % 360} 60% 45%))` }}>
@@ -37,7 +47,7 @@ export default function Topbar() {
             <p className="text-xs text-gray-500 capitalize">{user.role}</p>
           </div>
         </div>
-        <button onClick={logout} className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Sign out">
+        <button onClick={logout} className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title={t('topbar.signOut')}>
           <LogOut className="w-4 h-4" />
         </button>
       </div>

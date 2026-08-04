@@ -4,6 +4,7 @@ const { suggestAuthoritiesForArea } = require('./utils/authorityAI');
 
 function id() { return crypto.randomBytes(12).toString('hex'); }
 function now() { return new Date().toISOString(); }
+function normalizePhone(raw) { return String(raw || '').replace(/[^\d]/g, ''); }
 
 // ---- stores ----
 const users = [];
@@ -51,6 +52,7 @@ const DOCS_SPEC = [
   { title: 'Dhangadhi Sub-Metro — Annual Report', docType: 'annual-report', fiscalYear: '2079/80', district: 'Kailali', municipality: 'Dhangadhi Sub-Metro' },
 ];
 const PROJ_NAMES = ['Ring Road Upgrade', 'Health Post Construction', 'Seti River Bridge', 'Water Supply Network', 'Kalika School Block', 'Solar Street Lights', 'Sanitary Landfill', 'Bus Park Hub', 'Flood Embankment', 'Data Centre', 'Agriculture Centre', 'Heritage Walkway'];
+const WARD_COUNT = 32; // Nepal's local units vary in ward count; used for demo seeding only
 const PREFIXES = ['Construction of', 'Upgrading of', 'Rehabilitation of', 'Expansion of'];
 const SUBJECTS = ['Ward Office', 'Road Section', 'Health Post', 'School Block', 'Water Tank', 'Bridge', 'Street Lights', 'Market Centre'];
 
@@ -135,8 +137,10 @@ function seedForUser(userId) {
         title: `${pick(r, PREFIXES)} ${pick(r, SUBJECTS)} — ${spec.municipality}`,
         department: pick(r, DEPTS), sector: pick(r, SECTORS),
         amount: (0.2 + r() * 12) * 1e7, fiscalYear: spec.fiscalYear,
-        district: spec.district, page: 1 + Math.floor(r() * 8),
+        district: spec.district, ward: String(1 + Math.floor(r() * WARD_COUNT)),
+        page: 1 + Math.floor(r() * 8),
         confidence: 0.82 + r() * 0.16,
+        flagged: false, flagReason: '', flaggedBy: null, flaggedAt: null,
       });
     }
 
@@ -193,15 +197,43 @@ const store = {
   getBudgets() { return budgetItems; },
   getProjects() { return projects; },
   getActivities() { return activities.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5); },
-  filterBudgets({ q, sector, fiscalYear, limit = 100 }) {
+  filterBudgets({ q, sector, fiscalYear, district, ward, flagged, limit = 100 }) {
     let result = budgetItems.slice();
     if (q) { const re = new RegExp(q, 'i'); result = result.filter(b => re.test(b.title) || re.test(b.district || '')); }
     if (sector && sector !== 'all') result = result.filter(b => b.sector === sector);
     if (fiscalYear && fiscalYear !== 'all') result = result.filter(b => b.fiscalYear === fiscalYear);
+    if (district) { const re = new RegExp(district, 'i'); result = result.filter(b => re.test(b.district || '')); }
+    if (ward) result = result.filter(b => (b.ward || '') === String(ward));
+    if (flagged === 'true' || flagged === true) result = result.filter(b => b.flagged);
     return result.sort((a, b) => b.amount - a.amount).slice(0, limit).map(b => {
       const doc = documents.find(d => d._id === b.document);
       return { ...b, documentId: doc?._id, documentTitle: doc?.title };
     });
+  },
+
+  // ---- Corruption / misuse flagging channel (separate from fake-issue flagging) ----
+  // A lightweight channel any signed-in user can use to flag a suspicious
+  // budget line (inflated amount, implausible department/sector pairing,
+  // duplicate entry, etc.) for admin review — independent of the analyst
+  // change-request workflow, which is for correcting data, not reporting misuse.
+  flagBudgetItem(itemId, userId, reason) {
+    const item = budgetItems.find(b => b._id === itemId);
+    if (!item) return { error: 'Budget item not found' };
+    if (!reason || !reason.trim()) return { error: 'Please describe why this entry looks suspicious' };
+    item.flagged = true;
+    item.flagReason = reason.trim();
+    item.flaggedBy = userId;
+    item.flaggedAt = now();
+    activities.push({ _id: id(), user: userId, type: 'flag', message: `Flagged "${item.title}" as potentially suspicious`, createdAt: now() });
+    store.notifyRoles(['admin'], { type: 'budget-flagged', title: 'Budget entry flagged', message: `"${item.title}" was flagged for review: ${reason.trim()}`, link: '/budget' });
+    return { item };
+  },
+  unflagBudgetItem(itemId, actingUser) {
+    if (actingUser.role !== 'admin') return { error: 'Only admins can clear a flag' };
+    const item = budgetItems.find(b => b._id === itemId);
+    if (!item) return { error: 'Budget item not found' };
+    item.flagged = false; item.flagReason = ''; item.flaggedBy = null; item.flaggedAt = null;
+    return { item };
   },
 
   createBudgetChange(budgetItemId, requestedBy, proposed, reason) {
@@ -277,8 +309,9 @@ const store = {
         const newItem = {
           _id: id(), user: change.requestedBy, document: docId,
           title: p.title, department: p.department, sector: p.sector,
-          amount: p.amount, fiscalYear: p.fiscalYear, district: p.district || '',
+          amount: p.amount, fiscalYear: p.fiscalYear, district: p.district || '', ward: p.ward || '',
           page: 1, confidence: 1,
+          flagged: false, flagReason: '', flaggedBy: null, flaggedAt: null,
         };
         budgetItems.push(newItem);
         change.budgetItem = newItem._id;
@@ -316,6 +349,22 @@ const store = {
 
   // Token lookup
   findUserById(userId) { return users.find(u => u._id === userId) || null; },
+  findUserByPhone(phone) { return users.find(u => u.phone && u.phone === phone) || null; },
+
+  // Auto-creates a minimal, phone-verified "researcher" account for a
+  // citizen who reports an issue via SMS before ever using the web app.
+  // No password/email — this account authenticates only by phone number
+  // matching an inbound SMS sender, never through the normal login form.
+  createSmsUser(phone) {
+    const u = {
+      _id: id(), name: `SMS Reporter ${phone.slice(-4)}`, email: `sms-${phone}@no-reply.govinsight.local`,
+      password: '', role: 'researcher', organization: 'SMS Reporter', jobTitle: 'Citizen Reporter',
+      avatarHue: Math.floor(Math.random() * 360), status: 'active', createdAt: now(),
+      phone, citizenshipDoc: '', citizenshipDocName: '', verificationStatus: 'n/a',
+    };
+    users.push(u);
+    return u;
+  },
 
   // ---- Civic reports (flood / road / tunnel etc.) ----
   reportMeta() {
@@ -323,7 +372,7 @@ const store = {
     return { categories: REPORT_CATEGORIES, authorities: names };
   },
 
-  publicReport(r) {
+  publicReport(r, viewerId = null) {
     const reporter = users.find(u => u._id === r.reportedBy);
     const original = r.duplicateOf ? reports.find(x => x._id === r.duplicateOf) : null;
     return {
@@ -331,15 +380,43 @@ const store = {
       reportedBy: reporter ? store.toPublic(reporter) : null,
       duplicateOfTitle: original ? original.title : null,
       timeline: r.timeline.map(t => ({ ...t, by: (users.find(u => u._id === t.by) && store.toPublic(users.find(u => u._id === t.by))) || null })),
+      upvoteCount: (r.upvotes || []).length,
+      hasUpvoted: viewerId ? (r.upvotes || []).includes(viewerId) : false,
+      comments: (r.comments || []).map(c => ({ ...c, user: store.toPublic(users.find(u => u._id === c.user) || {}) })),
     };
   },
 
-  createReport(userId, { title, category, description, severity, location, reporterContact }) {
+  // ---- Public upvote & comment on issues (community priority signal) ----
+  toggleUpvote(reportId, userId) {
+    const r = reports.find(x => x._id === reportId);
+    if (!r) return { error: 'Report not found' };
+    r.upvotes = r.upvotes || [];
+    const i = r.upvotes.indexOf(userId);
+    if (i === -1) r.upvotes.push(userId); else r.upvotes.splice(i, 1);
+    return { report: store.publicReport(r, userId) };
+  },
+  addReportComment(reportId, userId, text) {
+    const r = reports.find(x => x._id === reportId);
+    if (!r) return { error: 'Report not found' };
+    if (!text || !text.trim()) return { error: 'Comment cannot be empty' };
+    r.comments = r.comments || [];
+    const comment = { _id: id(), user: userId, text: text.trim(), createdAt: now() };
+    r.comments.push(comment);
+    if (r.reportedBy !== userId) {
+      store.createNotification(r.reportedBy, { type: 'comment', title: 'New comment on your report', message: `Someone commented on "${r.title}"`, link: `/issues/${r._id}`, report: r._id });
+    }
+    return { report: store.publicReport(r, userId) };
+  },
+
+  createReport(userId, { title, category, description, severity, location, reporterContact, photo, photoName, viaSms = false }) {
     const spec = REPORT_CATEGORIES.find(c => c.value === category);
     if (!spec) return { error: 'Unknown category' };
     if (!title || !description || !location?.address) return { error: 'Title, description and address are required' };
     if (!reporterContact || !reporterContact.trim()) return { error: 'A contact number is required so authorities can reach you about this report' };
-    if (location?.lat == null || location?.lng == null) return { error: 'Please pin your live location — it is required to submit a report' };
+    if (!viaSms && (location?.lat == null || location?.lng == null)) return { error: 'Please pin your live location — it is required to submit a report' };
+    // Photos are optional (SMS-submitted reports can't attach one), capped at
+    // ~5MB as a base64 data URL (~6.7MB encoded) to match the 5MB photo cap.
+    if (photo && photo.length > 7 * 1024 * 1024) return { error: 'Photo is too large — max 5MB' };
 
     const dup = findDuplicateCandidate(category, location);
     const days = estimateDays(category, severity);
@@ -352,6 +429,10 @@ const store = {
       location: { address: location.address || '', district: location.district || '', municipality: location.municipality || '', ward: location.ward || '', lat: location.lat ?? null, lng: location.lng ?? null },
       reportedBy: userId,
       reporterContact: reporterContact || '',
+      photo: photo || '', photoName: photoName || '',
+      viaSms: !!viaSms,
+      upvotes: [userId],
+      comments: [],
       status: dup ? 'duplicate' : 'pending',
       estimatedDays: dup ? dup.estimatedDays : days,
       dueDate: dup ? dup.dueDate : addDays(days),
@@ -394,7 +475,7 @@ const store = {
     return result
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, Number(limit) || 200)
-      .map(store.publicReport);
+      .map(r => store.publicReport(r, user._id));
   },
 
   reportStats(user) {
@@ -416,6 +497,22 @@ const store = {
     if (user.role === 'researcher' && r.reportedBy !== user._id) return null;
     const duplicates = reports.filter(x => x.duplicateOf === r._id).map(store.publicReport);
     return { ...store.publicReport(r), duplicates };
+  },
+
+  // Phone-based lookup for the SMS "STATUS" command — no session, so we
+  // trust the report id (or its last 6 chars) or fall back to the sender's
+  // own most recent report by matching reporterContact/phone.
+  getReportForSms(ref, phone) {
+    let r = null;
+    if (ref) {
+      r = reports.find(x => x._id === ref) || reports.find(x => x._id.endsWith(ref));
+    }
+    if (!r && phone) {
+      r = reports
+        .filter(x => normalizePhone(x.reporterContact) === phone)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+    }
+    return r ? store.publicReport(r) : null;
   },
 
   // Single workflow entrypoint used by analysts/admins to move a report

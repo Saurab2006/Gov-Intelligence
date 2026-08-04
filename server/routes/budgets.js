@@ -11,16 +11,30 @@ router.get('/', protect, async (req, res) => {
     const filter = { user: req.user._id };
     if (req.query.sector && req.query.sector !== 'all') filter.sector = req.query.sector;
     if (req.query.fiscalYear && req.query.fiscalYear !== 'all') filter.fiscalYear = req.query.fiscalYear;
+    if (req.query.district && req.query.district !== 'all') filter.district = req.query.district;
+    if (req.query.ward && req.query.ward !== 'all') filter.ward = req.query.ward;
     if (req.query.q) filter.title = { $regex: req.query.q, $options: 'i' };
 
     const items = await BudgetItem.find(filter).sort({ amount: -1 }).limit(Number(req.query.limit) || 100).populate('document', 'title');
     res.json({
       items: items.map(i => ({
         _id: i._id, title: i.title, department: i.department, sector: i.sector,
-        amount: i.amount, fiscalYear: i.fiscalYear, district: i.district, page: i.page,
+        amount: i.amount, fiscalYear: i.fiscalYear, district: i.district,
+        municipality: i.municipality, ward: i.ward, page: i.page,
         confidence: i.confidence, documentId: i.document?._id, documentTitle: i.document?.title,
       })),
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/meta/wards', protect, async (req, res) => {
+  try {
+    const filter = { user: req.user._id, ward: { $nin: [null, ''] } };
+    if (req.query.district && req.query.district !== 'all') filter.district = req.query.district;
+    const wards = await BudgetItem.distinct('ward', filter);
+    res.json({ wards: wards.sort() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -49,7 +63,7 @@ router.post('/:id/changes', protect, requireRole('analyst'), async (req, res) =>
     const budgetItem = await BudgetItem.findOne({ _id: req.params.id, user: req.user._id });
     if (!budgetItem) return res.status(404).json({ error: 'Budget item not found' });
 
-    const allowed = ['title', 'department', 'sector', 'amount', 'fiscalYear', 'district'];
+    const allowed = ['title', 'department', 'sector', 'amount', 'fiscalYear', 'district', 'municipality', 'ward'];
     const proposed = {};
     allowed.forEach(key => {
       if (req.body[key] !== undefined && req.body[key] !== '') proposed[key] = req.body[key];

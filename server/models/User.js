@@ -11,6 +11,11 @@ const userSchema = new mongoose.Schema({
   avatarHue:    { type: Number, default: () => Math.floor(Math.random() * 360) },
   status:       { type: String, enum: ['active', 'suspended'], default: 'active' },
 
+  // Phone number, normalized to digits only (e.g. "9779812345678").
+  // Used to identify citizens reporting issues over SMS, since a text
+  // message can't carry a JWT — the phone number is the identity.
+  phone:        { type: String, default: '', trim: true },
+
   // Identity verification (required at signup for researcher/citizen accounts).
   // Lets admins/analysts trace a report back to a verified identity if it's
   // ever flagged as fake.
@@ -20,6 +25,7 @@ const userSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 userSchema.index({ role: 1, status: 1 });
+userSchema.index({ phone: 1 });
 
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
@@ -40,6 +46,7 @@ userSchema.methods.toPublic = function () {
     jobTitle: this.jobTitle,
     avatarHue: this.avatarHue,
     status: this.status,
+    phone: this.phone,
     verificationStatus: this.verificationStatus,
     hasCitizenshipDoc: !!this.citizenshipDoc,
     createdAt: this.createdAt,
