@@ -1,0 +1,64 @@
+'use client';
+import { Link2, ShieldCheck } from 'lucide-react';
+
+export function NepalCivicMark({ className = 'h-10 w-10' }) {
+  return (
+    <svg viewBox="0 0 64 64" className={className} role="img" aria-label="GovInsight Nepal mark">
+      <defs>
+        <linearGradient id="nepalCivicMark" x1="10" y1="8" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#dc143c" />
+          <stop offset="1" stopColor="#0f3d3e" />
+        </linearGradient>
+      </defs>
+      <path d="M16 8v48h36L27 34h19L16 8Z" fill="url(#nepalCivicMark)" />
+      <path d="M16 8v48h36L27 34h19L16 8Z" fill="none" stroke="#fff7ec" strokeWidth="3" strokeLinejoin="round" />
+      <circle cx="28" cy="25" r="5" fill="#fff7ec" />
+      <path d="M22 45h18M25 40h12M28 35h6" stroke="#fff7ec" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function CivicLogo({ compact = false }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="relative grid h-10 w-10 place-items-center rounded-lg bg-[#fff7ec] shadow-sm">
+        <NepalCivicMark className="h-9 w-9" />
+        <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full border-2 border-white bg-[#0f3d3e]">
+          <Link2 className="h-2.5 w-2.5 text-white" />
+        </span>
+      </div>
+      {!compact && (
+        <div className="leading-tight">
+          <p className="text-sm font-extrabold tracking-tight text-[#102a2b]">GovInsight</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#dc143c]">Nepal</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function CivicTrustStrip({ className = '' }) {
+  return (
+    <div className={`grid grid-cols-3 gap-2 text-center ${className}`}>
+      {[
+        ['Report', 'a citizen raises a real ward problem'],
+        ['Verify', 'neighbors and staff confirm what is happening'],
+        ['Resolve', 'the responsible office closes the loop'],
+      ].map(([title, copy]) => (
+        <div key={title} className="rounded-lg border border-white/15 bg-white/10 p-3">
+          <p className="text-sm font-bold text-white">{title}</p>
+          <p className="mt-1 text-[11px] leading-snug text-white/65">{copy}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function CivicBadge({ children }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f0d0d5] bg-[#fff7f8] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#b80f31]">
+      <ShieldCheck className="h-3.5 w-3.5" />
+      {children}
+    </span>
+  );
+}

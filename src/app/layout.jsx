@@ -5,8 +5,8 @@ import { Toaster } from 'sonner';
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 
 export const metadata = {
-  title: 'GovInsight Nepal — Public Budget Intelligence Platform',
-  description: 'AI-powered analysis of Nepal government documents',
+  title: 'GovInsight Nepal - Civic Service Accountability Platform',
+  description: 'Human-centered ward reporting, verification, authority assignment, and public resolution tracking for Nepal',
   manifest: '/manifest.json',
   icons: {
     icon: '/icons/icon-192.svg',
@@ -15,13 +15,13 @@ export const metadata = {
 };
 
 export const viewport = {
-  themeColor: '#13294e',
+  themeColor: '#0f3d3e',
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">
+      <body className="min-h-screen bg-[#f5f1e8] text-[#102a2b] antialiased">
         <LanguageProvider>
           <AuthProvider>
             {children}

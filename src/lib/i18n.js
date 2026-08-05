@@ -10,19 +10,19 @@ export const LOCALES = {
 export const translations = {
   en: {
     // Sidebar / nav
-    'nav.dashboard': 'Dashboard',
-    'nav.budget': 'Budget Explorer',
+    'nav.dashboard': 'Civic Home',
+    'nav.budget': 'Public Money',
     'nav.departments': 'Departments',
-    'nav.issues': 'Community Reports',
+    'nav.issues': 'Issue Chain',
     'nav.authorities': 'Authorities',
-    'nav.analytics': 'Analytics',
-    'nav.reports': 'Reports',
+    'nav.analytics': 'Civic Intelligence',
+    'nav.reports': 'AI Briefs',
     'nav.userManagement': 'User Management',
     'nav.menu': 'Menu',
     'nav.admin': 'Admin',
 
     // Topbar
-    'topbar.search': 'Search budgets, departments, projects…',
+    'topbar.search': 'Search issues, wards, authorities, budgets...',
     'topbar.signOut': 'Sign out',
     'topbar.language': 'Language',
 
@@ -30,12 +30,12 @@ export const translations = {
     'offline.banner': "You're offline — showing saved data. Reports you submit now will send automatically once you're back online.",
 
     // Dashboard
-    'dashboard.title': 'Dashboard',
+    'dashboard.title': 'Civic Home',
     'dashboard.welcome': 'Welcome back',
     'dashboard.recentActivity': 'Recent Activity',
 
     // Budget explorer
-    'budget.title': 'Budget Explorer',
+    'budget.title': 'Public Money',
     'budget.subtitle': 'Search and filter budget line items',
     'budget.search': 'Search line items...',
     'budget.allSectors': 'All sectors',

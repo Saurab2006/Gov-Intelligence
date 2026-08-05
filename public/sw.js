@@ -11,7 +11,7 @@
 //    Background Sync once connectivity returns — this is how issue reports
 //    submitted offline eventually reach the server.
 
-const CACHE_VERSION = 'govinsight-v1';
+const CACHE_VERSION = 'govinsight-v2';
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 const QUEUE_DB = 'govinsight-offline-queue';
@@ -92,6 +92,19 @@ self.addEventListener('fetch', (event) => {
 
   const isApi = url.pathname.startsWith('/api/');
   const isReportWrite = isApi && url.pathname.startsWith('/api/reports') && request.method !== 'GET';
+
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(APP_SHELL_CACHE).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
+    );
+    return;
+  }
 
   // Queue report writes made while offline; replay them later via sync.
   if (isReportWrite) {

@@ -2,19 +2,15 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '@/context/AuthContext';
-import { Eye, EyeOff, UploadCloud, FileCheck2, X, ShieldCheck } from 'lucide-react';
+import { CivicBadge, CivicLogo } from '@/components/CivicBrand';
+import { Eye, EyeOff, FileCheck2, Loader2, MapPinned, ShieldCheck, UploadCloud, UserRoundCheck, X } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
-function LogoIcon({ size = 36 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 48 48" fill="none">
-      <rect width="48" height="48" rx="14" fill="#2563EB" />
-      <path d="M14 36V18L24 12L34 18V36" stroke="white" strokeWidth="2.4" strokeLinejoin="round" />
-      <path d="M20 36V29M24 36V25M28 36V31" stroke="white" strokeWidth="2.4" strokeLinecap="round" />
-    </svg>
-  );
-}
+const ROLE_CARDS = [
+  { value: 'researcher', title: 'Citizen', copy: 'Report a real problem, add your ward, and follow the fix until it is closed.' },
+  { value: 'analyst', title: 'Local body staff', copy: 'Review reports, assign responsible teams, and keep citizens updated.' },
+];
 
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -29,117 +25,180 @@ export default function SignupPage() {
   const { signup } = useAuth();
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
-  const [docFile, setDocFile] = useState(null); // { name, dataUrl }
+  const [docFile, setDocFile] = useState(null);
   const [docError, setDocError] = useState('');
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm({
-    defaultValues: { name: '', email: '', password: '', confirmPassword: '', role: 'researcher' },
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
+    defaultValues: {
+      name: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      role: 'researcher',
+      province: '',
+      district: '',
+      municipality: '',
+      ward: '',
+    },
   });
+  const role = watch('role');
 
   const handleDocChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!/^image\/|^application\/pdf$/.test(file.type)) { setDocError('Please upload an image or PDF'); return; }
-    if (file.size > 8 * 1024 * 1024) { setDocError('File is too large — max 8MB'); return; }
+    if (!/^image\/|^application\/pdf$/.test(file.type)) { setDocError('Upload an image or PDF'); return; }
+    if (file.size > 8 * 1024 * 1024) { setDocError('File is too large. Max 8MB'); return; }
     setDocError('');
     try {
       const dataUrl = await fileToDataUrl(file);
       setDocFile({ name: file.name, dataUrl });
     } catch {
-      setDocError('Could not read that file — try again');
+      setDocError('Could not read that file. Try again.');
     }
   };
 
   const onSubmit = async (values) => {
     setError('');
-    if (!docFile) { setDocError('Citizenship certificate / national ID is required to verify your identity'); return; }
+    if (values.role === 'researcher' && !docFile) {
+      setDocError('Citizenship certificate or national ID is required for citizen reporting.');
+      return;
+    }
+    const organization = [values.municipality, values.ward ? `Ward ${values.ward}` : '', values.district].filter(Boolean).join(', ') || 'GovInsight Nepal';
     try {
-      await signup({ ...values, citizenshipDoc: docFile.dataUrl, citizenshipDocName: docFile.name });
-      toast.success('Account created — welcome!');
-    } catch (err) { setError(err.message); }
+      await signup({
+        ...values,
+        organization,
+        citizenshipDoc: docFile?.dataUrl || '',
+        citizenshipDocName: docFile?.name || '',
+      });
+      toast.success('Account created. Welcome to GovInsight.');
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#edf3fa] px-5 py-10">
-      <div className="w-full max-w-[420px]">
-        <div className="bg-white rounded-[20px] shadow-[0_20px_60px_-15px_rgba(18,60,120,0.15)] p-8 sm:p-10 border border-gray-100/60">
-          <div className="flex flex-col items-center mb-8">
-            <LogoIcon />
-            <h2 className="mt-4 text-[22px] font-bold text-[#13294e]">Create Account</h2>
-            <p className="mt-1 text-[14px] text-[#5a6f8c]">Join the budget intelligence platform</p>
+    <main className="min-h-screen bg-[#f5f1e8] px-5 py-8 text-[#102a2b]">
+      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl gap-8 lg:grid-cols-[0.86fr_1.14fr]">
+        <section className="flex flex-col justify-between rounded-lg bg-[#0f3d3e] p-7 text-white lg:p-9">
+          <CivicLogo />
+          <div className="py-10">
+            <CivicBadge>Start a civic service chain</CivicBadge>
+            <h1 className="mt-5 text-4xl font-black leading-tight tracking-tight">Create your GovInsight account.</h1>
+            <p className="mt-4 text-sm leading-7 text-white/70">
+              Your ward, reports, authority assignments, evidence, timelines, and verification history stay connected so public problems do not disappear into a complaint inbox.
+            </p>
+            <div className="mt-8 space-y-3">
+              {['Submit a ward issue with location, contact, and evidence', 'Similar citizen reports become one stronger shared issue', 'Authorities update progress until citizens can verify the fix'].map((item, idx) => (
+                <div key={item} className="flex gap-3 rounded-lg border border-white/15 bg-white/10 p-3">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[#dc143c] text-xs font-black">{idx + 1}</span>
+                  <p className="text-sm font-semibold text-white/85">{item}</p>
+                </div>
+              ))}
+            </div>
           </div>
+          <p className="text-xs leading-5 text-white/50">Identity documents are private. They help keep reports accountable without showing your ID publicly.</p>
+        </section>
 
-          {error && <div className="mb-5 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-[13px] text-red-600">{error}</div>}
-
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div>
-              <label className="block text-[14px] font-bold text-[#13294e] mb-2">Full Name</label>
-              <input placeholder="Enter your full name" className="w-full h-[48px] px-4 rounded-xl border border-[#d5e0ee] bg-white text-[14px] text-[#13294e] placeholder:text-[#9db0c7] outline-none transition-all focus:border-[#2e7cf6] focus:ring-4 focus:ring-[#2e7cf6]/10" {...register('name', { required: 'Name is required' })} />
-              {errors.name && <p className="mt-1.5 text-[12px] text-red-500">{errors.name.message}</p>}
-            </div>
-
-            <div>
-              <label className="block text-[14px] font-bold text-[#13294e] mb-2">Email Address</label>
-              <input type="email" placeholder="Enter your email" className="w-full h-[48px] px-4 rounded-xl border border-[#d5e0ee] bg-white text-[14px] text-[#13294e] placeholder:text-[#9db0c7] outline-none transition-all focus:border-[#2e7cf6] focus:ring-4 focus:ring-[#2e7cf6]/10" {...register('email', { required: 'Email is required', pattern: { value: /\S+@\S+\.\S+/, message: 'Invalid email' } })} />
-              {errors.email && <p className="mt-1.5 text-[12px] text-red-500">{errors.email.message}</p>}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+        <section className="flex items-center">
+          <div className="w-full rounded-lg border border-[#ded6c8] bg-white p-5 shadow-[0_24px_70px_-35px_rgba(16,42,43,.45)] sm:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <label className="block text-[14px] font-bold text-[#13294e] mb-2">Password</label>
-                <div className="relative">
-                  <input type={showPw ? 'text' : 'password'} placeholder="Min 6 chars" className="w-full h-[48px] px-4 pr-10 rounded-xl border border-[#d5e0ee] bg-white text-[14px] text-[#13294e] placeholder:text-[#9db0c7] outline-none transition-all focus:border-[#2e7cf6] focus:ring-4 focus:ring-[#2e7cf6]/10" {...register('password', { required: 'Required', minLength: { value: 6, message: 'Min 6' } })} />
-                  <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8da3be] hover:text-[#2e7cf6]">
-                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {errors.password && <p className="mt-1 text-[11px] text-red-500">{errors.password.message}</p>}
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#dc143c]">Join GovInsight Nepal</p>
+                <h2 className="mt-2 text-3xl font-black tracking-tight">Create account</h2>
               </div>
+              <Link href="/login" className="rounded-lg border border-[#d9d1c1] px-3 py-2 text-xs font-bold text-[#0f3d3e] hover:border-[#0f3d3e]">Log in</Link>
+            </div>
+
+            {error && <div className="mt-5 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+            <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Full name" error={errors.name?.message}>
+                  <input className="civic-input" placeholder="Sita Sharma" {...register('name', { required: 'Name is required' })} />
+                </Field>
+                <Field label="Email" error={errors.email?.message}>
+                  <input type="email" className="civic-input" placeholder="you@example.com" {...register('email', { required: 'Email is required', pattern: { value: /\S+@\S+\.\S+/, message: 'Invalid email' } })} />
+                </Field>
+              </div>
+
               <div>
-                <label className="block text-[14px] font-bold text-[#13294e] mb-2">Confirm</label>
-                <input type="password" placeholder="Re-enter" className="w-full h-[48px] px-4 rounded-xl border border-[#d5e0ee] bg-white text-[14px] text-[#13294e] placeholder:text-[#9db0c7] outline-none transition-all focus:border-[#2e7cf6] focus:ring-4 focus:ring-[#2e7cf6]/10" {...register('confirmPassword', { validate: v => v === watch('password') || "Passwords don't match" })} />
-                {errors.confirmPassword && <p className="mt-1 text-[11px] text-red-500">{errors.confirmPassword.message}</p>}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[14px] font-bold text-[#13294e] mb-2">Citizenship Certificate / National ID</label>
-              <p className="text-[12px] text-[#5a6f8c] mb-2 flex items-start gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#2e7cf6] shrink-0 mt-0.5" />
-                Required to verify your identity — this lets admins trace a report back to a real person if it's ever flagged as fake. Kept private, never shown publicly.
-              </p>
-
-              {!docFile ? (
-                <label className="flex flex-col items-center justify-center gap-1.5 h-[100px] rounded-xl border-2 border-dashed border-[#d5e0ee] bg-[#f7fafd] cursor-pointer hover:border-[#2e7cf6] hover:bg-blue-50/40 transition-all">
-                  <UploadCloud className="w-5 h-5 text-[#8da3be]" />
-                  <span className="text-[12.5px] font-semibold text-[#5a6f8c]">Click to upload (image or PDF, max 8MB)</span>
-                  <input type="file" accept="image/*,application/pdf" onChange={handleDocChange} className="hidden" />
-                </label>
-              ) : (
-                <div className="flex items-center justify-between h-[56px] px-4 rounded-xl border border-emerald-200 bg-emerald-50">
-                  <span className="flex items-center gap-2 text-[13px] font-medium text-emerald-700 truncate">
-                    <FileCheck2 className="w-4 h-4 shrink-0" /> <span className="truncate">{docFile.name}</span>
-                  </span>
-                  <button type="button" onClick={() => setDocFile(null)} className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-100 shrink-0">
-                    <X className="w-4 h-4" />
-                  </button>
+                <p className="mb-2 text-sm font-bold">Account type</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {ROLE_CARDS.map(card => (
+                    <button
+                      key={card.value}
+                      type="button"
+                      onClick={() => setValue('role', card.value)}
+                      className={`rounded-lg border p-4 text-left transition ${role === card.value ? 'border-[#0f3d3e] bg-[#eef6f4] ring-4 ring-[#0f3d3e]/10' : 'border-[#ded6c8] bg-[#fffcf7] hover:border-[#0f3d3e]'}`}
+                    >
+                      <span className="flex items-center gap-2 text-sm font-black"><UserRoundCheck className="h-4 w-4 text-[#dc143c]" />{card.title}</span>
+                      <span className="mt-1 block text-xs leading-5 text-[#65706c]">{card.copy}</span>
+                    </button>
+                  ))}
                 </div>
-              )}
-              {docError && <p className="mt-1.5 text-[12px] text-red-500">{docError}</p>}
-            </div>
+                <input type="hidden" {...register('role')} />
+              </div>
 
-            <button type="submit" disabled={isSubmitting} className="w-full h-[50px] rounded-xl bg-[#7ec8d5] text-[15px] font-bold text-[#0c3550] hover:bg-[#6cc0cf] active:translate-y-[0.5px] transition-all disabled:opacity-60 shadow-sm">
-              {isSubmitting ? 'Creating…' : 'Create Account'}
-            </button>
-          </form>
+              <div className="rounded-lg border border-[#eee6d8] bg-[#fffcf7] p-4">
+                <p className="mb-3 flex items-center gap-2 text-sm font-bold"><MapPinned className="h-4 w-4 text-[#dc143c]" />Jurisdiction</p>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <input className="civic-input" placeholder="Province" {...register('province')} />
+                  <input className="civic-input" placeholder="District" {...register('district')} />
+                  <input className="civic-input sm:col-span-1" placeholder="Municipality" {...register('municipality')} />
+                  <input className="civic-input" placeholder="Ward" {...register('ward')} />
+                </div>
+              </div>
 
-          <p className="mt-6 text-center text-[13.5px] text-[#5a6f8c]">
-            Already have an account?{' '}
-            <Link href="/login" className="font-semibold text-[#2e7cf6] hover:underline">Login</Link>
-          </p>
-        </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Password" error={errors.password?.message}>
+                  <div className="relative">
+                    <input type={showPw ? 'text' : 'password'} className="civic-input pr-10" placeholder="Min 6 characters" {...register('password', { required: 'Required', minLength: { value: 6, message: 'Min 6 characters' } })} />
+                    <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-[#65706c] hover:bg-[#f5f1e8]">
+                      {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </Field>
+                <Field label="Confirm password" error={errors.confirmPassword?.message}>
+                  <input type="password" className="civic-input" placeholder="Re-enter password" {...register('confirmPassword', { validate: v => v === watch('password') || "Passwords don't match" })} />
+                </Field>
+              </div>
 
-        <p className="text-center text-[13px] text-[#8da3be] mt-6">© {new Date().getFullYear()} GovInsight Nepal. All rights reserved.</p>
+              <div>
+                <p className="mb-2 flex items-center gap-2 text-sm font-bold"><ShieldCheck className="h-4 w-4 text-[#dc143c]" />Citizenship certificate / national ID</p>
+                {!docFile ? (
+                  <label className="flex min-h-[96px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#d9d1c1] bg-[#fffcf7] p-4 text-center hover:border-[#0f3d3e]">
+                    <UploadCloud className="h-5 w-5 text-[#65706c]" />
+                    <span className="mt-2 text-xs font-bold text-[#65706c]">Upload image or PDF, max 8MB</span>
+                    <input type="file" accept="image/*,application/pdf" onChange={handleDocChange} className="hidden" />
+                  </label>
+                ) : (
+                  <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <span className="flex min-w-0 items-center gap-2 text-sm font-bold text-emerald-700"><FileCheck2 className="h-4 w-4 shrink-0" /><span className="truncate">{docFile.name}</span></span>
+                    <button type="button" onClick={() => setDocFile(null)} className="rounded-md p-1 text-emerald-700 hover:bg-emerald-100"><X className="h-4 w-4" /></button>
+                  </div>
+                )}
+                {docError && <p className="mt-1 text-xs text-red-600">{docError}</p>}
+              </div>
+
+              <button type="submit" disabled={isSubmitting} className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#dc143c] text-sm font-black text-white transition hover:bg-[#b80f31] disabled:opacity-60">
+                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                Create account
+              </button>
+            </form>
+          </div>
+        </section>
       </div>
-    </div>
+      <style jsx global>{`.civic-input{height:3rem;width:100%;border-radius:.5rem;border:1px solid #d9d1c1;background:#fffcf7;padding:0 .875rem;font-size:.875rem;outline:none;transition:border-color .15s,box-shadow .15s}.civic-input:focus{border-color:#0f3d3e;box-shadow:0 0 0 4px rgb(15 61 62 / .1)}`}</style>
+    </main>
+  );
+}
+
+function Field({ label, error, children }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-bold">{label}</span>
+      {children}
+      {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
+    </label>
   );
 }

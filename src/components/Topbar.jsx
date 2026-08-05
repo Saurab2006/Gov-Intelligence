@@ -3,9 +3,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { LogOut, Search, Languages } from 'lucide-react';
 import { initials } from '@/lib/format';
-import { Home } from 'lucide-react';
 import Link from 'next/link';
 import NotificationBell from './NotificationBell';
+import { CivicLogo } from './CivicBrand';
 
 export default function Topbar() {
   const { user, logout } = useAuth();
@@ -13,18 +13,15 @@ export default function Topbar() {
   if (!user) return null;
 
   return (
-    <header className="sticky top-0 z-30 h-16 border-b border-gray-200 bg-white/90 backdrop-blur-sm flex items-center gap-4 px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-[#ded6c8] bg-[#fffcf7]/90 px-4 backdrop-blur-sm sm:px-6">
       <Link href="/dashboard" className="flex items-center gap-2 lg:hidden">
-        <div className="w-7 h-7 bg-brand-500 rounded-lg flex items-center justify-center">
-          <Home className="w-3.5 h-3.5 text-white" />
-        </div>
-        <span className="text-sm font-bold text-gray-900">GovInsight</span>
+        <CivicLogo compact />
       </Link>
 
-      <div className="flex-1 flex justify-center">
+      <div className="flex flex-1 justify-center">
         <div className="relative w-full max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input placeholder={t('topbar.search')} className="w-full h-10 pl-10 pr-4 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 focus:bg-white transition-all" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8c8272]" />
+          <input placeholder={t('topbar.search')} className="h-10 w-full rounded-lg border border-[#d9d1c1] bg-white pl-10 pr-4 text-sm outline-none transition focus:border-[#0f3d3e] focus:bg-white focus:ring-4 focus:ring-[#0f3d3e]/10" />
         </div>
       </div>
 
@@ -32,22 +29,22 @@ export default function Topbar() {
         <button
           onClick={toggleLocale}
           title={t('topbar.language')}
-          className="h-9 px-3 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:text-brand-600 transition-colors flex items-center gap-1.5"
+          className="flex h-9 items-center gap-1.5 rounded-lg border border-[#d9d1c1] px-3 text-xs font-bold text-[#65706c] transition-colors hover:bg-white hover:text-[#0f3d3e]"
         >
           <Languages className="w-3.5 h-3.5" />
           {locale === 'en' ? 'नेपाली' : 'English'}
         </button>
         <NotificationBell />
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: `linear-gradient(135deg, hsl(${user.avatarHue} 65% 52%), hsl(${(user.avatarHue + 40) % 360} 60% 45%))` }}>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black text-white" style={{ background: `linear-gradient(135deg, #0f3d3e, #dc143c)` }}>
             {initials(user.name)}
           </div>
           <div className="hidden sm:block">
-            <p className="text-sm font-semibold text-gray-900 leading-tight">{user.name}</p>
-            <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+            <p className="text-sm font-bold leading-tight text-[#102a2b]">{user.name}</p>
+            <p className="text-xs capitalize text-[#65706c]">{user.role === 'researcher' ? 'citizen' : user.role}</p>
           </div>
         </div>
-        <button onClick={logout} className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title={t('topbar.signOut')}>
+        <button onClick={logout} className="rounded-lg p-2 text-[#8c8272] transition-colors hover:bg-red-50 hover:text-[#dc143c]" title={t('topbar.signOut')}>
           <LogOut className="w-4 h-4" />
         </button>
       </div>
