@@ -3,7 +3,7 @@ import { Link2, ShieldCheck } from 'lucide-react';
 
 export function NepalCivicMark({ className = 'h-10 w-10' }) {
   return (
-    <svg viewBox="0 0 64 64" className={className} role="img" aria-label="GovInsight Nepal mark">
+    <svg viewBox="0 0 64 64" className={className} role="img" aria-label="Civicदृष्टि mark">
       <defs>
         <linearGradient id="nepalCivicMark" x1="10" y1="8" x2="54" y2="58" gradientUnits="userSpaceOnUse">
           <stop stopColor="#dc143c" />
@@ -29,8 +29,9 @@ export function CivicLogo({ compact = false }) {
       </div>
       {!compact && (
         <div className="leading-tight">
-          <p className="text-sm font-extrabold tracking-tight text-[#102a2b]">GovInsight</p>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#dc143c]">Nepal</p>
+          <p className="text-sm font-extrabold tracking-tight text-[#102a2b]">
+            Civic<span className="font-extrabold">दृष्टि</span>
+          </p>
         </div>
       )}
     </div>

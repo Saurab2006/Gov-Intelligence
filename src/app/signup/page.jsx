@@ -63,7 +63,7 @@ export default function SignupPage() {
       setDocError('Citizenship certificate or national ID is required for citizen reporting.');
       return;
     }
-    const organization = [values.municipality, values.ward ? `Ward ${values.ward}` : '', values.district].filter(Boolean).join(', ') || 'GovInsight Nepal';
+    const organization = [values.municipality, values.ward ? `Ward ${values.ward}` : '', values.district].filter(Boolean).join(', ') || 'Civicदृष्टि';
     try {
       await signup({
         ...values,
@@ -71,7 +71,7 @@ export default function SignupPage() {
         citizenshipDoc: docFile?.dataUrl || '',
         citizenshipDocName: docFile?.name || '',
       });
-      toast.success('Account created. Welcome to GovInsight.');
+      toast.success('Account created. Welcome to Civicदृष्टि.');
     } catch (err) {
       setError(err.message);
     }

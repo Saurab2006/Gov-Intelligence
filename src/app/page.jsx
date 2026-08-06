@@ -55,7 +55,7 @@ export default function LandingPage() {
               Reports the system can&apos;t ignore.
             </h1>
             <p className="mt-8 max-w-2xl text-[22px] leading-9 text-[#68615b]">
-              GovInsight turns citizen complaints into public, trackable issues, clustered by community, verified by neighbours, and followed from report to resolution.
+              Civicदृष्टि turns citizen complaints into public, trackable issues, clustered by community, verified by neighbours, and followed from report to resolution.
             </p>
             <div className="mt-10 flex flex-wrap gap-3">
               <Link href="/signup" className="rounded-lg bg-[#cf1f3b] px-5 py-3 text-base font-black text-white shadow-sm hover:bg-[#b81831]">

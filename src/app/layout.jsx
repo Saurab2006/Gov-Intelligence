@@ -5,7 +5,7 @@ import { Toaster } from 'sonner';
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 
 export const metadata = {
-  title: 'GovInsight Nepal - Civic Service Accountability Platform',
+  title: 'Civicदृष्टि - Civic Service Accountability Platform',
   description: 'Human-centered ward reporting, verification, authority assignment, and public resolution tracking for Nepal',
   manifest: '/manifest.json',
   icons: {

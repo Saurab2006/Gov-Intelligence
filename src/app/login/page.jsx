@@ -100,7 +100,7 @@ export default function LoginPage() {
       </div>
 
       <div className={styles.footNote}>
-        No account? <Link href="/signup">Join GovInsight</Link>
+        No account? <Link href="/signup">Join Civicदृष्टि</Link>
       </div>
     </CivicAuthShell>
   );

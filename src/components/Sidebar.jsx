@@ -33,7 +33,7 @@ export default function Sidebar() {
             <Shield className="h-3.5 w-3.5" />
             {roleLabel}
           </p>
-          <p className="mt-1 truncate text-xs text-[#65706c]">{user.organization || 'GovInsight Nepal'}</p>
+          <p className="mt-1 truncate text-xs text-[#65706c]">{user.organization || 'Civicदृष्टि'}</p>
         </div>
       )}
 

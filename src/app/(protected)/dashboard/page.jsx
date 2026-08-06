@@ -50,7 +50,7 @@ export default function DashboardPage() {
               See where people are asking for help, who owns the work, and what has been fixed.
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70">
-              GovInsight keeps the civic service chain visible: a citizen reports a problem, the community confirms it, officials assign responsibility, and the outcome stays traceable.
+              Civicदृष्टि keeps the civic service chain visible: a citizen reports a problem, the community confirms it, officials assign responsibility, and the outcome stays traceable.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link href="/issues" className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#dc143c] px-4 text-sm font-black text-white hover:bg-[#b80f31]">
@@ -145,7 +145,7 @@ export default function DashboardPage() {
         </div>
 
         <aside className="space-y-5">
-          <Panel title="GovInsight Service Chain" subtitle="CivicChain-style features active in your app">
+          <Panel title="Civicदृष्टि Service Chain" subtitle="CivicChain-style features active in your app">
             <div className="space-y-3">
               {[
                 [ClipboardList, 'Community reports', 'citizens submit issues with location, severity, category, and contact'],

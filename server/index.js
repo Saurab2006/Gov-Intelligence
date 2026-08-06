@@ -102,7 +102,7 @@ app.post('/api/auth/login', async (req, res) => {
       const roleMap = { 'admin@govinsight.np': 'admin', 'analyst@govinsight.np': 'analyst', 'researcher@govinsight.np': 'researcher' };
       const names = { 'admin@govinsight.np': 'Saurabh', 'analyst@govinsight.np': 'Raja', 'researcher@govinsight.np': 'Anup' };
       const demoRole = roleMap[email] || 'analyst';
-      user = await store.createUser({ name: names[email] || 'Demo User', email, password: password, role: demoRole, organization: 'GovInsight Nepal' });
+      user = await store.createUser({ name: names[email] || 'Demo User', email, password: password, role: demoRole, organization: 'Civicदृष्टि' });
       store.seedForUser(user._id);
     }
     if (!user) return res.status(401).json({ error: 'Incorrect email or password' });

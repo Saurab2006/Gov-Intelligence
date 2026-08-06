@@ -1,6 +1,6 @@
-# GovInsight Nepal
+# Civicदृष्टि
 
-GovInsight Nepal is a government budget analysis web app built with Next.js, Express, MongoDB, and Mongoose. It helps users view budget records, analyze spending, compare departments, and manage approved data changes through role-based access.
+Civicदृष्टि is a government budget analysis web app built with Next.js, Express, MongoDB, and Mongoose. It helps users view budget records, analyze spending, compare departments, and manage approved data changes through role-based access.
 
 ## Main Benefits
 

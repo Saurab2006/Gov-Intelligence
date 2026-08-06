@@ -1,4 +1,4 @@
-// GovInsight Nepal — offline service worker.
+// Civicदृष्टि — offline service worker.
 //
 // Strategy:
 //  - App shell / static assets: cache-first, so core screens open with no

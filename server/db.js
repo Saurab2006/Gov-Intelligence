@@ -1,10 +1,4 @@
-/**
- * Database abstraction layer.
- *
- * When MONGODB_URI is set AND a live MongoDB server is reachable,
- * we use Mongoose. Otherwise we fall back to an in-memory JSON store
- * so the demo works perfectly in any sandbox environment.
- */
+
 const mongoose = require('mongoose');
 
 let mode = 'memory'; // 'mongo' | 'memory'

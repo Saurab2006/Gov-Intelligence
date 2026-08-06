@@ -82,7 +82,7 @@ function parseInboundSms(body) {
 
 function helpText() {
   return [
-    'GovInsight SMS commands:',
+    'Civicदृष्टि SMS commands:',
     'REPORT <category> <district> | <details> — e.g. REPORT road-damage Kathmandu | Pothole near ward office',
     'Categories: ' + VALID_CATEGORIES.join(', '),
     'STATUS <report-id> — check a report, or STATUS alone for your latest',

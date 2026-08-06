@@ -67,7 +67,7 @@ router.post('/login', async (req, res) => {
           email: normalizedEmail,
           password,
           role: demoRole,
-          organization: 'GovInsight Nepal',
+          organization: 'Civicदृष्टि',
         });
         await seedForUser(user._id);
       }
