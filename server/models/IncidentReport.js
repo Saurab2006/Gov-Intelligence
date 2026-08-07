@@ -7,6 +7,12 @@ const timelineEntrySchema = new mongoose.Schema({
   at:      { type: Date, default: Date.now },
 }, { _id: false });
 
+const commentSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  text: { type: String, required: true, trim: true, maxlength: 1000 },
+  createdAt: { type: Date, default: Date.now },
+}, { _id: true });
+
 const incidentReportSchema = new mongoose.Schema({
   title:       { type: String, required: true, trim: true },
   category:    { type: String, required: true, enum: ['flood', 'road-damage', 'tunnel-blockage', 'bridge-damage', 'landslide', 'drainage', 'electrical', 'water-supply', 'other'] },
@@ -24,6 +30,11 @@ const incidentReportSchema = new mongoose.Schema({
 
   reportedBy:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   reporterContact: { type: String, trim: true, default: '' },
+  photo:           { type: String, default: '' },
+  photoName:       { type: String, trim: true, default: '' },
+  viaSms:          { type: Boolean, default: false },
+  upvotes:         [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  comments:        [commentSchema],
 
   status: {
     type: String,

@@ -42,7 +42,7 @@ router.post('/ai-suggest', protect, async (req, res) => {
     const { district } = req.body;
     if (!district) return res.status(422).json({ error: 'District is required' });
     const existing = await Authority.find({ district: new RegExp(`^${district.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }).select('name');
-    const toCreate = suggestAuthoritiesForArea(district, new Set(existing.map(a => a.name)));
+    const toCreate = await suggestAuthoritiesForArea(district, new Set(existing.map(a => a.name)));
     const created = toCreate.length ? await Authority.insertMany(toCreate.map(a => ({ ...a, createdBy: req.user._id }))) : [];
     res.status(201).json({ created, message: created.length ? `Added ${created.length} authority(ies) for ${district}` : `${district} already has full coverage` });
   } catch (err) { res.status(500).json({ error: err.message }); }

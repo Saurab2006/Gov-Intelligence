@@ -6,7 +6,7 @@ import { relativeTime, cn } from '@/lib/format';
 import { toast } from 'sonner';
 import {
   AlertTriangle, MapPin, Plus, ArrowRight, Clock, Copy, ShieldAlert,
-  Loader2, X, Crosshair, Check,
+  Loader2, X, Crosshair, Check, ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -117,7 +117,7 @@ export default function IssuesPage() {
               </div>
               <h3 className="mt-3 text-sm font-semibold text-gray-900 line-clamp-2">{r.title}</h3>
               <p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{r.location.address}{r.location.district ? `, ${r.location.district}` : ''}</p>
-              <p className="text-xs text-gray-400 mt-1">{categoryLabel(r.category)}</p>
+              <p className="text-xs text-gray-400 mt-1">{categoryLabel(r.category)}</p>{r.photo && <img src={r.photo} alt="Report evidence" className="mt-3 h-28 w-full rounded-xl object-cover border border-gray-100" />}
 
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {r.confirmations > 1 && <span className="text-[10px] font-medium text-gray-600 bg-gray-100 rounded-md px-2 py-0.5 flex items-center gap-1"><Copy className="w-3 h-3" />{r.confirmations} reports</span>}
@@ -156,6 +156,14 @@ function FilterToggle({ active, onClick, label, icon: Icon }) {
   );
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read the file'));
+    reader.readAsDataURL(file);
+  });
+}
 const SEVERITIES = [
   { value: 'low', label: 'Low — minor inconvenience' },
   { value: 'medium', label: 'Medium — needs attention soon' },
@@ -168,8 +176,24 @@ function ReportForm({ meta, onClose, onCreated }) {
   const [submitting, setSubmitting] = useState(false);
   const [coords, setCoords] = useState(null);
   const [locating, setLocating] = useState(false);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoError, setPhotoError] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setPhotoError('Please upload an image'); return; }
+    if (file.size > 5 * 1024 * 1024) { setPhotoError('Photo is too large - max 5MB'); return; }
+    setPhotoError('');
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setPhotoFile({ name: file.name, dataUrl });
+    } catch {
+      setPhotoError('Could not read that photo');
+    }
+  };
   const captureLocation = () => {
     if (!navigator.geolocation) { toast.error('Location isn\'t available in this browser'); return; }
     setLocating(true);
@@ -190,6 +214,7 @@ function ReportForm({ meta, onClose, onCreated }) {
       const { report } = await post('/api/reports', {
         title: form.title, category: form.category, severity: form.severity, description: form.description,
         reporterContact: form.reporterContact,
+        photo: photoFile?.dataUrl || '', photoName: photoFile?.name || '',
         location: { address: form.address, district: form.district, municipality: form.municipality, ward: form.ward, lat: coords?.lat ?? null, lng: coords?.lng ?? null },
       });
       if (report.duplicateOfTitle) {
@@ -243,6 +268,22 @@ function ReportForm({ meta, onClose, onCreated }) {
             <Field label="Municipality"><input value={form.municipality} onChange={e => set('municipality', e.target.value)} className="input" /></Field>
             <Field label="Ward"><input value={form.ward} onChange={e => set('ward', e.target.value)} className="input" /></Field>
           </div>
+          <div>
+            <span className="block text-xs font-semibold text-gray-700 mb-1">Evidence photo (optional, max 5MB)</span>
+            {!photoFile ? (
+              <label className="flex h-20 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500 hover:border-brand-300 hover:bg-brand-50/40">
+                <ImageIcon className="w-4 h-4" /> Upload photo
+                <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
+              </label>
+            ) : (
+              <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 p-2">
+                <img src={photoFile.dataUrl} alt="Evidence preview" className="h-14 w-16 rounded-lg object-cover" />
+                <span className="min-w-0 flex-1 truncate text-xs font-semibold text-emerald-700">{photoFile.name}</span>
+                <button type="button" onClick={() => setPhotoFile(null)} className="rounded-lg p-1 text-emerald-700 hover:bg-emerald-100"><X className="w-4 h-4" /></button>
+              </div>
+            )}
+            {photoError && <p className="mt-1 text-xs text-red-500">{photoError}</p>}
+          </div>
           <Field label="Your contact number (required)">
             <input value={form.reporterContact} onChange={e => set('reporterContact', e.target.value)} placeholder="e.g. 98XXXXXXXX" className="input" required />
             <span className="block mt-1 text-[11px] text-gray-400">Used to reach you for follow-up and to verify this isn't a fake report.</span>
@@ -263,3 +304,4 @@ function ReportForm({ meta, onClose, onCreated }) {
 function Field({ label, children }) {
   return <label className="block"><span className="block text-xs font-semibold text-gray-700 mb-1">{label}</span>{children}</label>;
 }
+

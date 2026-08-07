@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 
 const changeRequestSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  budgetItem: { type: mongoose.Schema.Types.ObjectId, ref: 'BudgetItem', required: true },
+  budgetItem: { type: mongoose.Schema.Types.ObjectId, ref: 'BudgetItem', default: null },
+  type: { type: String, enum: ['update', 'create'], default: 'update' },
   requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
@@ -16,6 +17,7 @@ const changeRequestSchema = new mongoose.Schema({
     district: { type: String, trim: true },
     municipality: { type: String, trim: true },
     ward: { type: String, trim: true },
+    document: { type: mongoose.Schema.Types.ObjectId, ref: 'Document' },
   },
   reviewedAt: { type: Date },
 }, { timestamps: true });

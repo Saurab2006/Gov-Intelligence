@@ -1,7 +1,7 @@
-'use client';
+﻿'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Building2, ClipboardList, Gauge, Landmark, LineChart, Settings, Shield, Table2, Users } from 'lucide-react';
+import { Building2, ClipboardList, Gauge, Landmark, LineChart, Settings, Shield, Table2, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/format';
 import { CivicLogo } from './CivicBrand';
@@ -12,7 +12,6 @@ const NAV = [
   { href: '/authorities', label: 'Authorities', helper: 'who owns the work', icon: Landmark },
   { href: '/budget', label: 'Public Money', helper: 'funding behind services', icon: Table2 },
   { href: '/departments', label: 'Departments', helper: 'teams and responsibilities', icon: Building2 },
-  { href: '/analytics', label: 'Civic Intelligence', helper: 'patterns, pressure, impact', icon: BarChart3 },
   { href: '/reports', label: 'AI Briefs', helper: 'plain-language summaries', icon: LineChart },
 ];
 

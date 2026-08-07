@@ -1,6 +1,6 @@
-const crypto = require('crypto');
+﻿const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { suggestAuthoritiesForArea } = require('./utils/authorityAI');
+const { fallbackSuggestAuthoritiesForArea } = require('./utils/authorityAI');
 
 function id() { return crypto.randomBytes(12).toString('hex'); }
 function now() { return new Date().toISOString(); }
@@ -44,17 +44,74 @@ const SECTORS = ['Roads & Transport', 'Health', 'Education', 'Drinking Water', '
 const DEPTS = ['Municipal Executive', 'Department of Roads', 'Ministry of Health', 'Ministry of Education', 'Water Supply Dept', 'Agriculture Dept', 'Energy Dept', 'Urban Development Dept'];
 const STATUSES = ['planned', 'ongoing', 'completed', 'delayed'];
 const DOCS_SPEC = [
-  { title: 'Kathmandu Metropolitan City — Annual Budget', docType: 'budget', fiscalYear: '2081/82', district: 'Kathmandu', municipality: 'Kathmandu Metro' },
-  { title: 'Pokhara Metropolitan City — Annual Budget', docType: 'budget', fiscalYear: '2080/81', district: 'Kaski', municipality: 'Pokhara Metro' },
-  { title: 'Office of Auditor General — Audit Report', docType: 'audit', fiscalYear: '2080/81', district: 'Chitwan', municipality: 'Bharatpur Metro' },
-  { title: 'Butwal Sub-Metro — Development Plan', docType: 'development-plan', fiscalYear: '2081/82', district: 'Rupandehi', municipality: 'Butwal Sub-Metro' },
-  { title: 'Dept of Roads — Procurement Notice', docType: 'procurement', fiscalYear: '2081/82', district: 'Sunsari', municipality: 'Dharan Sub-Metro' },
-  { title: 'Dhangadhi Sub-Metro — Annual Report', docType: 'annual-report', fiscalYear: '2079/80', district: 'Kailali', municipality: 'Dhangadhi Sub-Metro' },
+  { title: 'Kathmandu Metropolitan City â€” Annual Budget', docType: 'budget', fiscalYear: '2081/82', district: 'Kathmandu', municipality: 'Kathmandu Metro' },
+  { title: 'Pokhara Metropolitan City â€” Annual Budget', docType: 'budget', fiscalYear: '2080/81', district: 'Kaski', municipality: 'Pokhara Metro' },
+  { title: 'Office of Auditor General â€” Audit Report', docType: 'audit', fiscalYear: '2080/81', district: 'Chitwan', municipality: 'Bharatpur Metro' },
+  { title: 'Butwal Sub-Metro â€” Development Plan', docType: 'development-plan', fiscalYear: '2081/82', district: 'Rupandehi', municipality: 'Butwal Sub-Metro' },
+  { title: 'Dept of Roads â€” Procurement Notice', docType: 'procurement', fiscalYear: '2081/82', district: 'Sunsari', municipality: 'Dharan Sub-Metro' },
+  { title: 'Dhangadhi Sub-Metro â€” Annual Report', docType: 'annual-report', fiscalYear: '2079/80', district: 'Kailali', municipality: 'Dhangadhi Sub-Metro' },
 ];
 const PROJ_NAMES = ['Ring Road Upgrade', 'Health Post Construction', 'Seti River Bridge', 'Water Supply Network', 'Kalika School Block', 'Solar Street Lights', 'Sanitary Landfill', 'Bus Park Hub', 'Flood Embankment', 'Data Centre', 'Agriculture Centre', 'Heritage Walkway'];
 const WARD_COUNT = 32; // Nepal's local units vary in ward count; used for demo seeding only
 const PREFIXES = ['Construction of', 'Upgrading of', 'Rehabilitation of', 'Expansion of'];
 const SUBJECTS = ['Ward Office', 'Road Section', 'Health Post', 'School Block', 'Water Tank', 'Bridge', 'Street Lights', 'Market Centre'];
+const PROVINCE_DISTRICTS = [
+  { name: 'Koshi Province', districts: ['Sunsari','Morang','Jhapa','Ilam','Dhankuta'] },
+  { name: 'Madhesh Province', districts: ['Dhanusha','Parsa','Bara','Saptari'] },
+  { name: 'Bagmati Province', districts: ['Kathmandu','Lalitpur','Bhaktapur','Chitwan','Makwanpur'] },
+  { name: 'Gandaki Province', districts: ['Kaski','Tanahun','Gorkha','Baglung'] },
+  { name: 'Lumbini Province', districts: ['Rupandehi','Dang','Banke','Bardiya'] },
+  { name: 'Karnali Province', districts: ['Surkhet','Jumla','Dailekh','Kalikot'] },
+  { name: 'Sudurpashchim Province', districts: ['Kailali','Kanchanpur','Doti','Dadeldhura'] },
+];
+const DISTRICT_PROVINCE = PROVINCE_DISTRICTS.reduce((acc, p) => { p.districts.forEach(d => { acc[d.toLowerCase()] = p.name; }); return acc; }, {});
+const STAGE_PERCENT = { planned: 10, ongoing: 55, completed: 100, delayed: 35 };
+function provinceFor(district) { return DISTRICT_PROVINCE[String(district || '').toLowerCase()] || 'Unmapped Province'; }
+function progressFor(row) {
+  const manual = Number(row.completionOverride);
+  if (Number.isFinite(manual)) return Math.max(0, Math.min(100, manual));
+  return STAGE_PERCENT[row.status] ?? 25;
+}
+function makeTrackingNode(level, name, parent = null) {
+  return { id: `${level}:${parent || 'root'}:${name}`, level, name, parent, allocated: 0, spent: 0, completed: 0, remaining: 0, completion: 0, planned: 0, ongoing: 0, completedStage: 0, delayed: 0, projectCount: 0 };
+}
+function addTracking(node, row) {
+  const allocated = Number(row.amount ?? row.budget ?? 0) || 0;
+  const percent = progressFor(row);
+  const spent = Number(row.spent) > 0 ? Number(row.spent) : allocated * (percent / 100);
+  node.allocated += allocated;
+  node.spent += spent;
+  node.completed += allocated * (percent / 100);
+  node.remaining += allocated * (1 - percent / 100);
+  node.projectCount += 1;
+  if (row.status === 'completed') node.completedStage += 1;
+  else if (row.status === 'ongoing') node.ongoing += 1;
+  else if (row.status === 'delayed') node.delayed += 1;
+  else node.planned += 1;
+}
+function finalizeTracking(node) {
+  node.allocated = Math.round(node.allocated);
+  node.spent = Math.round(node.spent);
+  node.completed = Math.round(node.completed);
+  node.remaining = Math.max(0, Math.round(node.remaining));
+  node.completion = node.allocated ? Math.round((node.completed / node.allocated) * 100) : 0;
+  return node;
+}
+function buildBudgetTracking(budgetRows, projectRows) {
+  const maps = { province: new Map(), district: new Map(), municipality: new Map(), ward: new Map() };
+  const ensure = (level, name, parent) => {
+    const key = `${parent || 'root'}|${name}`;
+    if (!maps[level].has(key)) maps[level].set(key, makeTrackingNode(level, name, parent));
+    return maps[level].get(key);
+  };
+  PROVINCE_DISTRICTS.forEach(p => ensure('province', p.name, null));
+  [...budgetRows, ...projectRows].forEach(raw => {
+    const row = { ...raw, amount: raw.amount ?? raw.budget ?? 0, province: raw.province || provinceFor(raw.district), district: raw.district || 'Unspecified District', municipality: raw.municipality || 'Municipality not specified', ward: raw.ward ? `Ward ${raw.ward}` : 'Ward not specified', status: raw.status || 'planned' };
+    [ensure('province', row.province, null), ensure('district', row.district, row.province), ensure('municipality', row.municipality, row.district), ensure('ward', row.ward, row.municipality)].forEach(node => addTracking(node, row));
+  });
+  const list = level => Array.from(maps[level].values()).map(finalizeTracking).sort((a, b) => b.allocated - a.allocated || a.name.localeCompare(b.name));
+  return { provinces: list('province'), districts: list('district'), municipalities: list('municipality'), wards: list('ward'), generatedAt: now() };
+}
 
 function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function pick(r, arr) { return arr[Math.floor(r() * arr.length)]; }
@@ -63,7 +120,7 @@ function pick(r, arr) { return arr[Math.floor(r() * arr.length)]; }
 
 // Lightweight rule-based "AI" estimator: takes the category's typical repair
 // window and adjusts it by how urgent the citizen marked the problem.
-// (Stands in for a model call — swap for a real completion if ever wired up.)
+// (Stands in for a model call â€” swap for a real completion if ever wired up.)
 function estimateDays(category, severity) {
   const spec = REPORT_CATEGORIES.find(c => c.value === category) || REPORT_CATEGORIES[REPORT_CATEGORIES.length - 1];
   const factor = { critical: 0.5, high: 0.75, medium: 1, low: 1.3 }[severity] ?? 1;
@@ -75,7 +132,7 @@ function addDays(days) { const d = new Date(); d.setDate(d.getDate() + Number(da
 function normalizeText(s) { return (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean); }
 
 // Two reports are treated as "the same problem" when they share a category,
-// sit in the same district, and their location text overlaps meaningfully —
+// sit in the same district, and their location text overlaps meaningfully â€”
 // this is what lets many citizen reports of one broken tunnel collapse into
 // a single work item instead of flooding the queue with duplicates.
 function textOverlap(a, b) {
@@ -134,10 +191,11 @@ function seedForUser(userId) {
     for (let i = 0; i < 14 + Math.floor(r() * 14); i++) {
       budgetItems.push({
         _id: id(), user: userId, document: docId,
-        title: `${pick(r, PREFIXES)} ${pick(r, SUBJECTS)} — ${spec.municipality}`,
+        title: `${pick(r, PREFIXES)} ${pick(r, SUBJECTS)} â€” ${spec.municipality}`,
         department: pick(r, DEPTS), sector: pick(r, SECTORS),
         amount: (0.2 + r() * 12) * 1e7, fiscalYear: spec.fiscalYear,
-        district: spec.district, ward: String(1 + Math.floor(r() * WARD_COUNT)),
+        province: provinceFor(spec.district), district: spec.district, municipality: spec.municipality, ward: String(1 + Math.floor(r() * WARD_COUNT)),
+        status: pick(r, STATUSES), completionOverride: r() > 0.78 ? Math.floor(15 + r() * 80) : null,
         page: 1 + Math.floor(r() * 8),
         confidence: 0.82 + r() * 0.16,
         flagged: false, flagReason: '', flaggedBy: null, flaggedAt: null,
@@ -149,7 +207,8 @@ function seedForUser(userId) {
         _id: id(), user: userId, document: docId,
         name: pick(r, PROJ_NAMES), sector: pick(r, SECTORS),
         status: pick(r, STATUSES), budget: (0.5 + r() * 18) * 1e7,
-        district: spec.district, fiscalYear: spec.fiscalYear,
+        spent: 0, completionOverride: r() > 0.7 ? Math.floor(10 + r() * 90) : null,
+        province: provinceFor(spec.district), district: spec.district, municipality: spec.municipality, ward: String(1 + Math.floor(r() * WARD_COUNT)), fiscalYear: spec.fiscalYear,
       });
     }
     created++;
@@ -197,6 +256,7 @@ const store = {
   getBudgets() { return budgetItems; },
   getProjects() { return projects; },
   getActivities() { return activities.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5); },
+  getBudgetTracking() { return buildBudgetTracking(budgetItems, projects); },
   filterBudgets({ q, sector, fiscalYear, district, ward, flagged, limit = 100 }) {
     let result = budgetItems.slice();
     if (q) { const re = new RegExp(q, 'i'); result = result.filter(b => re.test(b.title) || re.test(b.district || '')); }
@@ -214,7 +274,7 @@ const store = {
   // ---- Corruption / misuse flagging channel (separate from fake-issue flagging) ----
   // A lightweight channel any signed-in user can use to flag a suspicious
   // budget line (inflated amount, implausible department/sector pairing,
-  // duplicate entry, etc.) for admin review — independent of the analyst
+  // duplicate entry, etc.) for admin review â€” independent of the analyst
   // change-request workflow, which is for correcting data, not reporting misuse.
   flagBudgetItem(itemId, userId, reason) {
     const item = budgetItems.find(b => b._id === itemId);
@@ -298,7 +358,7 @@ const store = {
         const p = change.proposed;
         const docId = id();
         documents.push({
-          _id: docId, user: change.requestedBy, title: `${p.title} — Manually Added Record`,
+          _id: docId, user: change.requestedBy, title: `${p.title} â€” Manually Added Record`,
           docType: 'manual-entry', fiscalYear: p.fiscalYear, district: p.district || '',
           fileName: null, fileSize: 0, organization: p.district || 'Manual Entry', status: 'completed',
           pageCount: 0, totalBudget: p.amount,
@@ -353,7 +413,7 @@ const store = {
 
   // Auto-creates a minimal, phone-verified "researcher" account for a
   // citizen who reports an issue via SMS before ever using the web app.
-  // No password/email — this account authenticates only by phone number
+  // No password/email â€” this account authenticates only by phone number
   // matching an inbound SMS sender, never through the normal login form.
   createSmsUser(phone) {
     const u = {
@@ -413,10 +473,10 @@ const store = {
     if (!spec) return { error: 'Unknown category' };
     if (!title || !description || !location?.address) return { error: 'Title, description and address are required' };
     if (!reporterContact || !reporterContact.trim()) return { error: 'A contact number is required so authorities can reach you about this report' };
-    if (!viaSms && (location?.lat == null || location?.lng == null)) return { error: 'Please pin your live location — it is required to submit a report' };
+    if (!viaSms && (location?.lat == null || location?.lng == null)) return { error: 'Please pin your live location â€” it is required to submit a report' };
     // Photos are optional (SMS-submitted reports can't attach one), capped at
     // ~5MB as a base64 data URL (~6.7MB encoded) to match the 5MB photo cap.
-    if (photo && photo.length > 7 * 1024 * 1024) return { error: 'Photo is too large — max 5MB' };
+    if (photo && photo.length > 7 * 1024 * 1024) return { error: 'Photo is too large â€” max 5MB' };
 
     const dup = findDuplicateCandidate(category, location);
     const days = estimateDays(category, severity);
@@ -456,7 +516,7 @@ const store = {
       // Let whoever is already handling the original know it's escalating.
       if (dup.assignedBy) store.createNotification(dup.assignedBy, { type: 'duplicate', title: 'Another report on an active issue', message: `"${dup.title}" now has ${dup.confirmations} citizen reports.`, link: `/issues/${dup._id}`, report: dup._id });
     } else {
-      store.notifyRoles(['admin', 'analyst'], { type: 'new-report', title: 'New community report', message: `${title.trim()} — ${location.address}${location.district ? ', ' + location.district : ''}`, link: `/issues/${report._id}`, report: report._id });
+      store.notifyRoles(['admin', 'analyst'], { type: 'new-report', title: 'New community report', message: `${title.trim()} â€” ${location.address}${location.district ? ', ' + location.district : ''}`, link: `/issues/${report._id}`, report: report._id });
     }
     activities.push({ _id: id(), user: userId, type: 'report', message: `Reported a ${spec.label.toLowerCase()} issue: "${title.trim()}"`, createdAt: now() });
     return { report: store.publicReport(report) };
@@ -499,7 +559,7 @@ const store = {
     return { ...store.publicReport(r), duplicates };
   },
 
-  // Phone-based lookup for the SMS "STATUS" command — no session, so we
+  // Phone-based lookup for the SMS "STATUS" command â€” no session, so we
   // trust the report id (or its last 6 chars) or fall back to the sender's
   // own most recent report by matching reporterContact/phone.
   getReportForSms(ref, phone) {
@@ -545,7 +605,7 @@ const store = {
       r.estimatedDays = days;
       r.dueDate = addDays(days);
       r.status = r.status === 'pending' ? 'verified' : r.status;
-      r.timeline.push({ action: 'eta-updated', note: `Analyst revised the estimate to ${days} day(s)${payload.note ? ` — ${payload.note}` : ''}`, by: actingUser._id, at: now() });
+      r.timeline.push({ action: 'eta-updated', note: `Analyst revised the estimate to ${days} day(s)${payload.note ? ` â€” ${payload.note}` : ''}`, by: actingUser._id, at: now() });
       notifyReporters({ type: 'eta-updated', title: 'Estimated completion updated', message: `"${r.title}" is now expected to be resolved in ${days} day(s).` });
     } else if (action === 'start') {
       r.status = 'in-progress';
@@ -555,7 +615,7 @@ const store = {
       r.status = 'completed';
       r.completedAt = now();
       r.timeline.push({ action: 'completed', note: payload.note || 'Marked complete by analyst', by: actingUser._id, at: now() });
-      notifyReporters({ type: 'completed', title: 'Issue resolved', message: `Good news — "${r.title}" has been marked complete.` });
+      notifyReporters({ type: 'completed', title: 'Issue resolved', message: `Good news â€” "${r.title}" has been marked complete.` });
       store.notifyRoles(['admin'], { type: 'completed', title: 'Report closed', message: `${actingUser.name} closed "${r.title}".`, link: `/issues/${r._id}`, report: r._id });
     } else if (action === 'mark-fake') {
       if (!payload.reason) return { error: 'Give a reason so it can be reviewed later' };
@@ -604,7 +664,7 @@ const store = {
   aiSuggestAuthorities(createdBy, district) {
     if (!district) return { error: 'District is required' };
     const existingNames = new Set(authorities.filter(a => (a.district || '').toLowerCase() === district.toLowerCase()).map(a => a.name));
-    const toCreate = suggestAuthoritiesForArea(district, existingNames);
+    const toCreate = fallbackSuggestAuthoritiesForArea(district, existingNames);
     const created = toCreate.map(spec => {
       const a = { _id: id(), ...spec, contactEmail: '', contactPhone: '', createdBy, ratingAvg: 0, ratingCount: 0, createdAt: now(), updatedAt: now() };
       authorities.push(a);
@@ -659,3 +719,5 @@ const store = {
 };
 
 module.exports = store;
+
+

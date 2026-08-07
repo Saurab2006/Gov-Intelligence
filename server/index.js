@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
@@ -75,7 +75,7 @@ app.post('/api/auth/signup', async (req, res) => {
     if (exists) return res.status(409).json({ error: 'An account with this email already exists' });
     // Public signup only ever creates the first account as admin, or a normal
     // (researcher/viewer) account after that. Analyst access is granted only
-    // by an existing admin from User Management — never through signup.
+    // by an existing admin from User Management â€” never through signup.
     const isFirst = store.userCount() === 0;
     const finalRole = isFirst ? 'admin' : 'researcher';
 
@@ -149,13 +149,16 @@ app.get('/api/analytics', protect, (req, res) => {
   const recentDocuments = docs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6);
 
   res.json({
-    kpis: { documents: docs.length, totalBudget, departments: deptSet.size, projects: projs.length, latestFy: fys[fys.length - 1] || '—' },
+    kpis: { documents: docs.length, totalBudget, departments: deptSet.size, projects: projs.length, latestFy: fys[fys.length - 1] || 'â€”' },
     sectorBreakdown, budgetTrend, topDepartments, districts, utilization, recentDocuments,
     activity: acts.map(a => ({ _id: a._id, type: a.type, message: a.message, createdAt: a.createdAt })),
   });
 });
 
 // ---- BUDGETS ----
+app.get('/api/budgets/tracking', protect, (req, res) => {
+  res.json(store.getBudgetTracking());
+});
 app.get('/api/budgets', protect, (req, res) => {
   const items = store.filterBudgets(req.query);
   res.json({ items });
@@ -188,7 +191,7 @@ app.post('/api/budgets/:id/changes', protect, (req, res) => {
   res.status(201).json({ change });
 });
 
-// Propose a brand-new budget record (not an edit to an existing line) — e.g.
+// Propose a brand-new budget record (not an edit to an existing line) â€” e.g.
 // data for a municipality or fiscal year that isn't in the system yet.
 app.post('/api/budgets/changes', protect, (req, res) => {
   if (req.user.role !== 'analyst') return res.status(403).json({ error: 'Only analysts can propose new records' });
@@ -214,7 +217,7 @@ app.patch('/api/budgets/changes/:id', protect, (req, res) => {
   res.json({ change });
 });
 
-// Corruption / misuse flagging channel — any signed-in user can flag a
+// Corruption / misuse flagging channel â€” any signed-in user can flag a
 // budget line as suspicious; only admins can clear the flag after review.
 app.post('/api/budgets/:id/flag', protect, (req, res) => {
   const result = store.flagBudgetItem(req.params.id, req.user._id, req.body?.reason);
@@ -244,14 +247,14 @@ app.get('/api/departments', protect, (req, res) => {
   });
 
   if (!name) {
-    const list = Object.values(map).map(e => ({ name: e.name, total: e.total, count: e.count, topSector: Object.entries(e.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] || '—', districts: e.districts.size })).sort((a, b) => b.total - a.total);
+    const list = Object.values(map).map(e => ({ name: e.name, total: e.total, count: e.count, topSector: Object.entries(e.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] || 'â€”', districts: e.districts.size })).sort((a, b) => b.total - a.total);
     return res.json({ departments: list });
   }
 
   const entry = map[name];
   if (!entry) return res.json({ department: null });
   const lines = budgets.filter(b => shortDept(b.department) === name).sort((a, b) => b.amount - a.amount).slice(0, 60).map(b => ({ _id: b._id, title: b.title, sector: b.sector, amount: b.amount, fiscalYear: b.fiscalYear, district: b.district, page: b.page, documentId: b.document }));
-  res.json({ department: { name, total: entry.total, count: entry.count, districts: entry.districts.size, topSector: Object.entries(entry.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] || '—', sectors: Object.entries(entry.sectors).map(([key, value]) => ({ key, value, color: SECTOR_COLORS[key] || '#2563EB' })).sort((a, b) => b.value - a.value), trend: Object.entries(entry.byYear).map(([key, value]) => ({ key, value })).sort((a, b) => a.key.localeCompare(b.key)), lines } });
+  res.json({ department: { name, total: entry.total, count: entry.count, districts: entry.districts.size, topSector: Object.entries(entry.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] || 'â€”', sectors: Object.entries(entry.sectors).map(([key, value]) => ({ key, value, color: SECTOR_COLORS[key] || '#2563EB' })).sort((a, b) => b.value - a.value), trend: Object.entries(entry.byYear).map(([key, value]) => ({ key, value })).sort((a, b) => a.key.localeCompare(b.key)), lines } });
 });
 
 // ---- USERS (admin) ----
@@ -312,7 +315,7 @@ app.patch('/api/reports/:id', protect, (req, res) => {
 
 // ---- SMS REPORTING FALLBACK ----
 // Inbound webhook a carrier (Twilio or equivalent) calls when a citizen
-// texts in. No JWT auth here by design — SMS senders aren't logged into
+// texts in. No JWT auth here by design â€” SMS senders aren't logged into
 // the web app; the phone number itself is the identity. Point your
 // carrier's inbound-SMS webhook at POST /api/sms/inbound.
 app.post('/api/sms/inbound', async (req, res) => {
@@ -330,7 +333,7 @@ app.post('/api/sms/inbound', async (req, res) => {
     } else if (cmd.type === 'status') {
       const report = store.getReportForSms(cmd.ref, phone);
       reply = report
-        ? `Report "${report.title}" — status: ${report.status}${report.assignedDepartment ? ` (${report.assignedDepartment})` : ''}. ID: ${report._id.slice(-6)}`
+        ? `Report "${report.title}" â€” status: ${report.status}${report.assignedDepartment ? ` (${report.assignedDepartment})` : ''}. ID: ${report._id.slice(-6)}`
         : "No matching report found. Text your report ID, or REPORT to file a new one.";
     } else if (cmd.type === 'report') {
       if (!cmd.category) {
@@ -340,7 +343,7 @@ app.post('/api/sms/inbound', async (req, res) => {
         if (!smsUser) {
           // Auto-create a lightweight, phone-verified citizen account so the
           // report has an owner and the sender can check status later. No
-          // password/email — this account can only be used via SMS.
+          // password/email â€” this account can only be used via SMS.
           smsUser = store.createSmsUser(phone);
         }
         const result = store.createReport(smsUser._id, {
@@ -437,7 +440,9 @@ async function start() {
       await Authority.insertMany(BASE_AUTHORITIES.map(name => ({ name, department: name, district: '', source: 'seed' })));
     }
   }
-  app.listen(PORT, () => console.log(`✓ Express API on :${PORT} (${getMode()} mode)`));
+  app.listen(PORT, () => console.log(`âœ“ Express API on :${PORT} (${getMode()} mode)`));
 }
 
 start();
+
+

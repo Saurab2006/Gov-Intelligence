@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { get } from '@/lib/api';
@@ -56,8 +56,8 @@ export default function DashboardPage() {
               <Link href="/issues" className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#dc143c] px-4 text-sm font-black text-white hover:bg-[#b80f31]">
                 Open Issue Chain <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link href="/authorities" className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/20 px-4 text-sm font-black text-white/85 hover:bg-white/10">
-                Review Authorities
+              <Link href="/budget" className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/20 px-4 text-sm font-black text-white/85 hover:bg-white/10">
+                Track Public Budget
               </Link>
             </div>
           </div>

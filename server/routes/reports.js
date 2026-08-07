@@ -36,7 +36,11 @@ function textOverlap(a, b) {
   let shared = 0; wa.forEach(w => { if (wb.has(w)) shared++; });
   return shared / Math.min(wa.size, wb.size);
 }
-
+function serializeReport(report, viewerId) {
+  const obj = typeof report.toObject === 'function' ? report.toObject() : report;
+  const upvotes = (obj.upvotes || []).map(String);
+  return { ...obj, upvoteCount: upvotes.length, hasUpvoted: viewerId ? upvotes.includes(String(viewerId)) : false };
+}
 async function findDuplicateCandidate(category, location) {
   const cutoff = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000);
   const candidates = await IncidentReport.find({
@@ -46,14 +50,13 @@ async function findDuplicateCandidate(category, location) {
   });
   return candidates.find(r => textOverlap(r.location.address, location.address) >= 0.4) || null;
 }
-
 async function notifyRoles(roles, payload) {
   const recipients = await User.find({ role: { $in: roles } }).select('_id');
-  await Notification.insertMany(recipients.map(u => ({ user: u._id, ...payload })));
+  if (recipients.length) await Notification.insertMany(recipients.map(u => ({ user: u._id, ...payload })));
 }
 async function notifyReporters(report, payload) {
   const linked = await IncidentReport.find({ $or: [{ _id: report._id }, { duplicateOf: report._id }] }).select('reportedBy');
-  await Notification.insertMany(linked.map(r => ({ user: r.reportedBy, ...payload, report: report._id })));
+  if (linked.length) await Notification.insertMany(linked.map(r => ({ user: r.reportedBy, ...payload, report: report._id, link: payload.link || `/issues/${report._id}` })));
 }
 
 router.get('/meta', protect, async (req, res) => {
@@ -90,33 +93,30 @@ router.get('/', protect, async (req, res) => {
     if (flagged === 'true') filter.isFake = true;
     const items = await IncidentReport.find(filter).sort({ createdAt: -1 }).limit(200)
       .populate('reportedBy', 'name email role organization avatarHue verificationStatus')
-      .populate('timeline.by', 'name email role avatarHue');
-    res.json({ reports: items });
+      .populate('timeline.by', 'name email role avatarHue')
+      .populate('comments.user', 'name role avatarHue');
+    res.json({ reports: items.map(r => serializeReport(r, req.user._id)) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.post('/', protect, async (req, res) => {
   try {
     if (req.user.role !== 'researcher') return res.status(403).json({ error: 'Only researchers can submit a community report' });
-    const { title, category, description, severity, location, reporterContact } = req.body;
+    const { title, category, description, severity, location, reporterContact, photo, photoName } = req.body;
     const spec = REPORT_CATEGORIES.find(c => c.value === category);
     if (!spec) return res.status(422).json({ error: 'Unknown category' });
     if (!title || !description || !location?.address) return res.status(422).json({ error: 'Title, description and address are required' });
     if (!reporterContact || !reporterContact.trim()) return res.status(422).json({ error: 'A contact number is required so authorities can reach you about this report' });
-    if (location?.lat == null || location?.lng == null) return res.status(422).json({ error: 'Please pin your live location — it is required to submit a report' });
+    if (location?.lat == null || location?.lng == null) return res.status(422).json({ error: 'Please pin your live location - it is required to submit a report' });
+    if (photo && photo.length > 7 * 1024 * 1024) return res.status(422).json({ error: 'Photo is too large - max 5MB' });
 
     const dup = await findDuplicateCandidate(category, location);
     const days = estimateDays(category, severity);
-
     const report = await IncidentReport.create({
-      title, category, description, severity: severity || 'medium', location, reporterContact,
-      reportedBy: req.user._id,
-      status: dup ? 'duplicate' : 'pending',
-      estimatedDays: dup ? dup.estimatedDays : days,
-      dueDate: dup ? dup.dueDate : addDays(days),
-      assignedDepartment: dup ? dup.assignedDepartment : '',
-      assignedContact: dup ? dup.assignedContact : '',
-      duplicateOf: dup ? dup._id : null,
+      title: title.trim(), category, description: description.trim(), severity: severity || 'medium', location, reporterContact,
+      photo: photo || '', photoName: photoName || '', upvotes: [req.user._id], comments: [], reportedBy: req.user._id,
+      status: dup ? 'duplicate' : 'pending', estimatedDays: dup ? dup.estimatedDays : days, dueDate: dup ? dup.dueDate : addDays(days),
+      assignedDepartment: dup ? dup.assignedDepartment : '', assignedContact: dup ? dup.assignedContact : '', duplicateOf: dup ? dup._id : null,
       timeline: [{ action: dup ? 'reported (matched to existing issue)' : 'reported', note: dup ? `Linked to an existing report: "${dup.title}"` : `AI-suggested resolution window: ${days} day(s)`, by: req.user._id }],
     });
 
@@ -126,19 +126,51 @@ router.post('/', protect, async (req, res) => {
       await dup.save();
       if (dup.assignedBy) await Notification.create({ user: dup.assignedBy, type: 'duplicate', title: 'Another report on an active issue', message: `"${dup.title}" now has ${dup.confirmations} citizen reports.`, link: `/issues/${dup._id}`, report: dup._id });
     } else {
-      await notifyRoles(['admin', 'analyst'], { type: 'new-report', title: 'New community report', message: `${title} — ${location.address}${location.district ? ', ' + location.district : ''}`, link: `/issues/${report._id}`, report: report._id });
+      await notifyRoles(['admin', 'analyst'], { type: 'new-report', title: 'New community report', message: `${title} - ${location.address}${location.district ? ', ' + location.district : ''}`, link: `/issues/${report._id}`, report: report._id });
     }
-    res.status(201).json({ report });
+    res.status(201).json({ report: serializeReport(report, req.user._id) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/:id/upvote', protect, async (req, res) => {
+  try {
+    const report = await IncidentReport.findById(req.params.id).populate('comments.user', 'name role avatarHue');
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+    const userId = String(req.user._id);
+    const existing = (report.upvotes || []).findIndex(id => String(id) === userId);
+    if (existing === -1) report.upvotes.push(req.user._id); else report.upvotes.splice(existing, 1);
+    await report.save();
+    res.json({ report: serializeReport(report, req.user._id) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/:id/comments', protect, async (req, res) => {
+  try {
+    const text = (req.body?.text || '').trim();
+    if (!text) return res.status(422).json({ error: 'Comment cannot be empty' });
+    const report = await IncidentReport.findById(req.params.id).populate('reportedBy', 'name email role organization avatarHue verificationStatus').populate('comments.user', 'name role avatarHue');
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+    report.comments.push({ user: req.user._id, text });
+    await report.save();
+    await report.populate('comments.user', 'name role avatarHue');
+    const reporterId = String(report.reportedBy?._id || report.reportedBy);
+    if (reporterId !== String(req.user._id)) {
+      await Notification.create({ user: reporterId, type: 'comment', title: 'New comment on your report', message: `Someone commented on "${report.title}"`, link: `/issues/${report._id}`, report: report._id });
+    }
+    res.status(201).json({ report: serializeReport(report, req.user._id) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.get('/:id', protect, async (req, res) => {
   try {
-    const report = await IncidentReport.findById(req.params.id).populate('reportedBy', 'name email role organization avatarHue verificationStatus').populate('timeline.by', 'name email role avatarHue');
+    const report = await IncidentReport.findById(req.params.id)
+      .populate('reportedBy', 'name email role organization avatarHue verificationStatus')
+      .populate('timeline.by', 'name email role avatarHue')
+      .populate('comments.user', 'name role avatarHue');
     if (!report) return res.status(404).json({ error: 'Report not found' });
     if (req.user.role === 'researcher' && String(report.reportedBy._id) !== String(req.user._id)) return res.status(404).json({ error: 'Report not found' });
     const duplicates = await IncidentReport.find({ duplicateOf: report._id }).populate('reportedBy', 'name email role avatarHue');
-    res.json({ report: { ...report.toObject(), duplicates } });
+    res.json({ report: { ...serializeReport(report, req.user._id), duplicates: duplicates.map(d => serializeReport(d, req.user._id)) } });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -167,7 +199,7 @@ router.patch('/:id', protect, async (req, res) => {
       report.estimatedDays = days;
       report.dueDate = addDays(days);
       if (report.status === 'pending') report.status = 'verified';
-      report.timeline.push({ action: 'eta-updated', note: `Analyst revised the estimate to ${days} day(s)${payload.note ? ` — ${payload.note}` : ''}`, by: req.user._id });
+      report.timeline.push({ action: 'eta-updated', note: `Analyst revised the estimate to ${days} day(s)${payload.note ? ` - ${payload.note}` : ''}`, by: req.user._id });
       await notifyReporters(report, { type: 'eta-updated', title: 'Estimated completion updated', message: `"${report.title}" is now expected to be resolved in ${days} day(s).` });
     } else if (action === 'start') {
       report.status = 'in-progress';
@@ -177,7 +209,7 @@ router.patch('/:id', protect, async (req, res) => {
       report.status = 'completed';
       report.completedAt = new Date();
       report.timeline.push({ action: 'completed', note: payload.note || 'Marked complete by analyst', by: req.user._id });
-      await notifyReporters(report, { type: 'completed', title: 'Issue resolved', message: `Good news — "${report.title}" has been marked complete.` });
+      await notifyReporters(report, { type: 'completed', title: 'Issue resolved', message: `Good news - "${report.title}" has been marked complete.` });
       await notifyRoles(['admin'], { type: 'completed', title: 'Report closed', message: `${req.user.name} closed "${report.title}".`, link: `/issues/${report._id}`, report: report._id });
     } else if (action === 'mark-fake') {
       if (!payload.reason) return res.status(422).json({ error: 'Give a reason so it can be reviewed later' });
@@ -200,7 +232,7 @@ router.patch('/:id', protect, async (req, res) => {
     }
 
     await report.save();
-    res.json({ report });
+    res.json({ report: serializeReport(report, req.user._id) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
