@@ -1,7 +1,7 @@
 ﻿'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, ClipboardList, Gauge, Landmark, LineChart, Settings, Shield, Table2, Users } from 'lucide-react';
+import { Building2, ClipboardList, Gauge, Landmark, LineChart, MapPinned, Settings, Shield, Table2, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/format';
 import { CivicLogo } from './CivicBrand';
@@ -18,7 +18,7 @@ const NAV = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const roleLabel = user?.role === 'researcher' ? 'Citizen' : user?.role === 'analyst' ? 'Local body staff' : 'Admin executive';
+  const roleLabel = user?.role === 'researcher' ? 'Citizen' : user?.role === 'analyst' ? 'Local body staff' : user?.role === 'ward_rep' ? 'Ward Representative' : 'Admin executive';
 
   return (
     <aside className="hidden h-screen w-[268px] shrink-0 flex-col border-r border-[#ded6c8] bg-[#fffcf7] lg:flex sticky top-0">
@@ -67,6 +67,13 @@ export default function Sidebar() {
               <Users className="h-4 w-4 text-[#dc143c]" />
               User Management
             </Link>
+            <Link href="/admin/wards" className={cn(
+              'mt-1 flex items-center gap-3 rounded-lg border px-3 py-3 text-sm font-black transition',
+              pathname.startsWith('/admin/wards') ? 'border-[#0f3d3e] bg-[#eef6f4] text-[#0f3d3e]' : 'border-transparent text-[#65706c] hover:border-[#ded6c8] hover:bg-white'
+            )}>
+              <MapPinned className="h-4 w-4 text-[#dc143c]" />
+              Wards & Representatives
+            </Link>
           </div>
         )}
 
@@ -81,3 +88,4 @@ export default function Sidebar() {
     </aside>
   );
 }
+

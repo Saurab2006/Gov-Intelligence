@@ -1,37 +1,23 @@
-'use client';
-import { useState } from 'react';
+﻿'use client';
 import Link from 'next/link';
+import Image from 'next/image';
 import styles from '@/styles/civicAuth.module.css';
-import { ShieldCheck } from 'lucide-react';
+import { CivicLogo } from '@/components/CivicBrand';
 
 export default function CivicAuthShell({ activeTab, children }) {
-  const [lang, setLang] = useState('en');
-
   return (
     <div className={styles.shell}>
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Yatra+One&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
-      />
       <div className={styles.authShell}>
-        <div className={styles.sidePanel}>
+        <section className={styles.sidePanel}>
+          <Image src="/civic-temple.png" alt="Kathmandu temples and mountains" fill priority sizes="(max-width: 900px) 100vw, 50vw" className={styles.sideImage} />
+          <div className={styles.imageWash} />
           <div className={styles.sidePanelContent}>
-            <div className={styles.brandRow}>
-              <div className={styles.brandSeal}>
-                <span />
-              </div>
-              <div>
-                <div className={styles.brandWordmarkSm}>Civic<span className={styles.np}>दृष्टि</span></div>
-                <div className={styles.brandCaption}>Civic Archive</div>
-              </div>
-            </div>
-
+            <div className={styles.brandRow}><CivicLogo /></div>
             <div className={styles.sidePanelBottom}>
-              <div className={styles.taglineNp}>सुनिने आवाज, दर्ज इतिहास</div>
-              <div className={styles.brandWordmarkLg}>Civic<span className={styles.np}>दृष्टि</span></div>
-              <div className={styles.quoteNp}>तपाईंको सरकार, तपाईंको दृष्टिमा</div>
-              <div className={styles.quoteEn}>Namaste – welcome to your government, in view.</div>
-
+              <p className={styles.taglineNp}>सुनिने आवाज, दर्ज इतिहास</p>
+              <h1 className={styles.brandWordmarkLg}>Civic<span>दृष्टि</span></h1>
+              <p className={styles.quoteNp}>तपाईंको सरकार, तपाईंको दृष्टिमा</p>
+              <p className={styles.quoteEn}>Namaste - welcome to your government, in view.</p>
               <div className={styles.statStrip}>
                 <div><strong>753</strong>Local units</div>
                 <div><strong>रू 1.86T</strong>Tracked budget</div>
@@ -39,46 +25,19 @@ export default function CivicAuthShell({ activeTab, children }) {
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className={styles.formPanel}>
+        <section className={styles.formPanel}>
           <div className={styles.formPanelInner}>
-            <div className={styles.formTop}>
-              <div className={styles.eyebrow}>
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Secure access
-              </div>
-              <div className={styles.langToggle}>
-                <button
-                  type="button"
-                  className={`${styles.langToggleBtn} ${lang === 'en' ? styles.langToggleBtnActive : ''}`}
-                  onClick={() => setLang('en')}
-                >
-                  EN
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.langToggleBtn} ${lang === 'ne' ? styles.langToggleBtnActive : ''}`}
-                  onClick={() => setLang('ne')}
-                >
-                  नेपाली
-                </button>
-              </div>
-            </div>
-
+            <div className={styles.mobileLogo}><CivicLogo /></div>
+            <p className={styles.eyebrow}>Secure Civic Access</p>
             <div className={styles.tierTabs}>
-              <Link href="/login" className={`${styles.tierTab} ${activeTab === 'login' ? styles.tierTabActive : ''}`}>
-                Log In
-              </Link>
-              <Link href="/signup" className={`${styles.tierTab} ${activeTab === 'signup' ? styles.tierTabActive : ''}`}>
-                Sign Up
-              </Link>
+              <Link href="/login" className={`${styles.tierTab} ${activeTab === 'login' ? styles.tierTabActive : ''}`}>Log in</Link>
+              <Link href="/signup" className={`${styles.tierTab} ${activeTab === 'signup' ? styles.tierTabActive : ''}`}>Sign up</Link>
             </div>
-            <div className={styles.dhakaMini} />
-
             {children}
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

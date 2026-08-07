@@ -1,19 +1,24 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
   name:         { type: String, required: true, trim: true },
   email:        { type: String, required: true, unique: true, lowercase: true, trim: true },
   password:     { type: String, required: true, minlength: 6 },
-  role:         { type: String, enum: ['admin', 'analyst', 'researcher'], default: 'analyst' },
+  role:         { type: String, enum: ['admin', 'analyst', 'researcher', 'ward_rep'], default: 'analyst' },
   organization: { type: String, default: 'Independent' },
   jobTitle:     { type: String, default: 'Analyst' },
   avatarHue:    { type: Number, default: () => Math.floor(Math.random() * 360) },
   status:       { type: String, enum: ['active', 'suspended'], default: 'active' },
+  emailVerified: { type: Boolean, default: false },
+  emailOtpHash: { type: String, default: '' },
+  emailOtpExpires: { type: Date, default: null },
+  resetPasswordHash: { type: String, default: '' },
+  resetPasswordExpires: { type: Date, default: null },
 
   // Phone number, normalized to digits only (e.g. "9779812345678").
   // Used to identify citizens reporting issues over SMS, since a text
-  // message can't carry a JWT — the phone number is the identity.
+  // message can't carry a JWT â€” the phone number is the identity.
   phone:        { type: String, default: '', trim: true },
 
   // Identity verification (required at signup for researcher/citizen accounts).
@@ -22,6 +27,18 @@ const userSchema = new mongoose.Schema({
   citizenshipDoc:     { type: String, default: '' }, // base64 data URL of the uploaded ID image/PDF
   citizenshipDocName: { type: String, default: '' },
   verificationStatus: { type: String, enum: ['pending', 'verified', 'rejected', 'n/a'], default: 'n/a' },
+  wardRepresentativeApplication: {
+    requested: { type: Boolean, default: false },
+    status: { type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none' },
+    province: { type: String, default: '' },
+    district: { type: String, default: '' },
+    municipality: { type: String, default: '' },
+    ward: { type: String, default: '' },
+    details: { type: String, default: '' },
+    document: { type: String, default: '' },
+    documentName: { type: String, default: '' },
+    reviewedAt: { type: Date, default: null },
+  },
 }, { timestamps: true });
 
 userSchema.index({ role: 1, status: 1 });
@@ -46,11 +63,14 @@ userSchema.methods.toPublic = function () {
     jobTitle: this.jobTitle,
     avatarHue: this.avatarHue,
     status: this.status,
+    emailVerified: this.emailVerified,
     phone: this.phone,
     verificationStatus: this.verificationStatus,
     hasCitizenshipDoc: !!this.citizenshipDoc,
+    wardRepresentativeApplication: this.wardRepresentativeApplication,
     createdAt: this.createdAt,
   };
 };
 
 module.exports = mongoose.model('User', userSchema);
+

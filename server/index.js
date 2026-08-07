@@ -12,9 +12,12 @@ const userRoutes = require('./routes/users');
 const reportRoutes = require('./routes/reports');
 const notificationRoutes = require('./routes/notifications');
 const authorityRoutes = require('./routes/authorities');
+const noticeRoutes = require('./routes/notices');
+const wardRoutes = require('./routes/wards');
 const smsRoutes = require('./routes/sms');
 const Authority = require('./models/Authority');
 const { parseInboundSms, helpText, sendSms, normalizePhone, VALID_CATEGORIES } = require('./utils/sms');
+const { code, hashCode, expires, validHash, welcomeEmail, otpEmail, resetEmail } = require('./utils/authEmails');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'govinsight-nepal-jwt-secret';
 
@@ -63,12 +66,19 @@ useMongoRoutes('/api/users', userRoutes);
 useMongoRoutes('/api/reports', reportRoutes);
 useMongoRoutes('/api/notifications', notificationRoutes);
 useMongoRoutes('/api/authorities', authorityRoutes);
+useMongoRoutes('/api/notices', noticeRoutes);
+useMongoRoutes('/api/wards', wardRoutes);
 useMongoRoutes('/api/sms', smsRoutes);
 
+
+app.get('/api/notices/public-active', (req, res) => {
+  const notice = store.activeNotice({ role: 'all' });
+  res.json({ notice: notice && notice.audience === 'all' ? notice : null });
+});
 // ---- AUTH ----
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { name, email, password, role, organization, citizenshipDoc, citizenshipDocName } = req.body;
+    const { name, email, password, role, organization, citizenshipDoc, citizenshipDocName, province, district, municipality, ward, applicationDetails } = req.body;
     if (!name || !email || !password) return res.status(422).json({ error: 'Name, email and password are required' });
     if (password.length < 6) return res.status(422).json({ error: 'Password must be at least 6 characters' });
     const exists = await store.findUserByEmail(email.toLowerCase().trim());
@@ -77,17 +87,21 @@ app.post('/api/auth/signup', async (req, res) => {
     // (researcher/viewer) account after that. Analyst access is granted only
     // by an existing admin from User Management â€” never through signup.
     const isFirst = store.userCount() === 0;
-    const finalRole = isFirst ? 'admin' : 'researcher';
+    const finalRole = role === 'ward_rep' ? 'ward_rep' : (isFirst ? 'admin' : 'researcher');
 
     // Citizens must verify identity with a citizenship document so
     // admins/analysts can trace a report back to a real person if flagged fake.
-    if (finalRole === 'researcher' && !citizenshipDoc) {
+    if (['researcher', 'ward_rep'].includes(finalRole) && !citizenshipDoc) {
       return res.status(422).json({ error: 'Please upload your citizenship certificate or national ID to verify your identity' });
     }
 
-    const user = await store.createUser({ name: name.trim(), email, password, role: finalRole, organization, citizenshipDoc, citizenshipDocName });
+    const user = await store.createUser({ name: name.trim(), email, password, role: finalRole, organization, citizenshipDoc, citizenshipDocName, province, district, municipality, ward, applicationDetails });
+    const otp = store.setEmailOtp(user);
+    welcomeEmail(user);
+    otpEmail(user, otp);
     const token = signToken(user);
     store.seedForUser(user._id);
+    if (finalRole === 'ward_rep') return res.status(202).json({ user: store.toPublic(user), pending: true, message: 'Ward Representative request submitted for admin approval' });
     res.status(201).json({ user: store.toPublic(user), token });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -115,15 +129,56 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+
+app.post('/api/auth/verify-email', protect, (req, res) => {
+  const otp = String(req.body?.otp || '').trim();
+  if (req.user.emailVerified) return res.json({ user: store.toPublic(req.user) });
+  if (!store.verifyEmailOtp(req.user, otp)) return res.status(422).json({ error: 'Invalid or expired verification code' });
+  res.json({ user: store.toPublic(req.user) });
+});
+
+app.post('/api/auth/resend-email-otp', protect, (req, res) => {
+  if (req.user.emailVerified) return res.json({ ok: true, alreadyVerified: true });
+  const otp = store.setEmailOtp(req.user);
+  otpEmail(req.user, otp);
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').toLowerCase().trim();
+    const user = email ? await store.findUserByEmail(email) : null;
+    if (user) {
+      const otp = store.setResetOtp(user);
+      await resetEmail(user, otp).catch(() => null);
+    }
+    res.json({ ok: true, message: 'If that email exists, a reset code has been sent.' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').toLowerCase().trim();
+    const otp = String(req.body?.otp || '').trim();
+    const password = String(req.body?.password || '');
+    if (!email || !otp || !password) return res.status(422).json({ error: 'Email, code and new password are required' });
+    if (password.length < 6) return res.status(422).json({ error: 'Password must be at least 6 characters' });
+    const user = await store.findUserByEmail(email);
+    if (!user || !validHash(user.resetPasswordHash, otp, user.resetPasswordExpires)) return res.status(422).json({ error: 'Invalid or expired reset code' });
+    await store.setPassword(user, password);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/auth/me', protect, (req, res) => {
   res.json({ user: store.toPublic(req.user) });
 });
 
 // ---- ANALYTICS ----
 app.get('/api/analytics', protect, (req, res) => {
-  const docs = store.getDocuments();
-  const budgets = store.getBudgets();
-  const projs = store.getProjects();
+  const wardScope = req.user.role === 'ward_rep' ? req.user.wardRepresentativeApplication || {} : null;
+  const docs = wardScope ? store.getDocuments().filter(d => d.district === wardScope.district) : store.getDocuments();
+  const budgets = wardScope ? store.getBudgets().filter(b => b.district === wardScope.district && String(b.ward || '') === String(wardScope.ward || '')) : store.getBudgets();
+  const projs = wardScope ? store.getProjects().filter(p => p.district === wardScope.district && String(p.ward || '') === String(wardScope.ward || '')) : store.getProjects();
   const acts = store.getActivities();
 
   const totalBudget = docs.reduce((a, d) => a + (d.totalBudget || 0), 0);
@@ -157,10 +212,12 @@ app.get('/api/analytics', protect, (req, res) => {
 
 // ---- BUDGETS ----
 app.get('/api/budgets/tracking', protect, (req, res) => {
-  res.json(store.getBudgetTracking());
+  res.json(store.getBudgetTrackingForUser(req.user));
 });
 app.get('/api/budgets', protect, (req, res) => {
-  const items = store.filterBudgets(req.query);
+  const budgetQuery = { ...req.query };
+  if (req.user.role === 'ward_rep') { const a = req.user.wardRepresentativeApplication || {}; budgetQuery.district = a.district || '__none__'; budgetQuery.ward = String(a.ward || '__none__'); }
+  const items = store.filterBudgets(budgetQuery);
   res.json({ items });
 });
 
@@ -169,7 +226,7 @@ app.get('/api/budgets/changes', protect, (req, res) => {
 });
 
 app.post('/api/budgets/:id/changes', protect, (req, res) => {
-  if (req.user.role !== 'analyst') return res.status(403).json({ error: 'Only analysts can propose data changes' });
+  if (!['analyst', 'ward_rep'].includes(req.user.role)) return res.status(403).json({ error: 'Only analysts or ward representatives can propose data changes' });
 
   const allowed = ['title', 'department', 'sector', 'amount', 'fiscalYear', 'district', 'ward'];
   const proposed = {};
@@ -186,7 +243,8 @@ app.post('/api/budgets/:id/changes', protect, (req, res) => {
 
   if (Object.keys(proposed).length === 0) return res.status(422).json({ error: 'Add at least one proposed change' });
 
-  const change = store.createBudgetChange(req.params.id, req.user._id, proposed, req.body.reason);
+  if (req.user.role === 'ward_rep') { const a = req.user.wardRepresentativeApplication || {}; proposed.district = a.district || proposed.district; proposed.municipality = a.municipality || proposed.municipality; proposed.ward = a.ward || proposed.ward; }
+  const change = store.createBudgetChange(req.params.id, req.user._id, proposed, req.body.reason, req.user);
   if (!change) return res.status(404).json({ error: 'Budget item not found' });
   res.status(201).json({ change });
 });
@@ -194,9 +252,10 @@ app.post('/api/budgets/:id/changes', protect, (req, res) => {
 // Propose a brand-new budget record (not an edit to an existing line) â€” e.g.
 // data for a municipality or fiscal year that isn't in the system yet.
 app.post('/api/budgets/changes', protect, (req, res) => {
-  if (req.user.role !== 'analyst') return res.status(403).json({ error: 'Only analysts can propose new records' });
+  if (!['analyst', 'ward_rep'].includes(req.user.role)) return res.status(403).json({ error: 'Only analysts or ward representatives can propose new records' });
 
-  const { title, department, sector, amount, fiscalYear, district, ward, reason } = req.body;
+  let { title, department, sector, amount, fiscalYear, district, municipality, ward, reason } = req.body;
+  if (req.user.role === 'ward_rep') { const a = req.user.wardRepresentativeApplication || {}; district = a.district || district; municipality = a.municipality || municipality; ward = a.ward || ward; }
   if (!title || !department || !sector || !fiscalYear) {
     return res.status(422).json({ error: 'Title, department, sector, and fiscal year are required' });
   }
@@ -205,7 +264,7 @@ app.post('/api/budgets/changes', protect, (req, res) => {
     return res.status(422).json({ error: 'Amount must be a valid positive number' });
   }
 
-  const change = store.createBudgetChangeNew(req.user._id, { title, department, sector, amount: amountNum, fiscalYear, district: district || '', ward: ward || '' }, reason);
+  const change = store.createBudgetChangeNew(req.user._id, { title, department, sector, amount: amountNum, fiscalYear, district: district || '', municipality: municipality || '', ward: ward || '' }, reason);
   res.status(201).json({ change });
 });
 
@@ -409,6 +468,46 @@ app.post('/api/authorities/:id/reviews', protect, (req, res) => {
   res.status(201).json(result);
 });
 
+
+
+// ---- WARD STRUCTURE ----
+app.get('/api/wards', protect, (req, res) => res.json({ wards: store.listWardUnits(req.user) }));
+app.post('/api/wards', protect, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const result = store.upsertWardUnit(req.user._id, req.body || {});
+  if (result.error) return res.status(422).json({ error: result.error });
+  res.status(201).json(result);
+});
+app.patch('/api/wards/:id', protect, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const ward = store.updateWardUnit(req.params.id, req.body || {});
+  if (!ward) return res.status(404).json({ error: 'Ward not found' });
+  res.json({ ward });
+});
+app.get('/api/wards/representatives/applications', protect, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  res.json({ applications: store.wardApplications() });
+});
+// ---- IMPORTANT NOTICES ----
+app.get('/api/notices/active', protect, (req, res) => {
+  res.json({ notice: store.activeNotice(req.user) });
+});
+app.get('/api/notices', protect, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  res.json({ notices: store.listNotices() });
+});
+app.post('/api/notices', protect, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const result = store.createNotice(req.user._id, req.body || {});
+  if (result.error) return res.status(422).json({ error: result.error });
+  res.status(201).json(result);
+});
+app.patch('/api/notices/:id', protect, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const notice = store.setNoticeActive(req.params.id, req.body?.active);
+  if (!notice) return res.status(404).json({ error: 'Notice not found' });
+  res.json({ notice });
+});
 // ---- NOTIFICATIONS ----
 app.get('/api/notifications', protect, (req, res) => {
   res.json(store.getNotifications(req.user._id, req.query));
@@ -444,5 +543,17 @@ async function start() {
 }
 
 start();
+
+
+
+
+
+
+
+
+
+
+
+
 
 

@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const IncidentReport = require('../models/IncidentReport');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
@@ -70,6 +70,7 @@ router.get('/meta', protect, async (req, res) => {
 router.get('/stats', protect, async (req, res) => {
   try {
     const filter = req.user.role === 'researcher' ? { reportedBy: req.user._id } : {};
+    if (req.user.role === 'ward_rep') { const a = req.user.wardRepresentativeApplication || {}; filter['location.district'] = a.district || '__none__'; filter['location.ward'] = String(a.ward || '__none__'); }
     const [total, pending, completed, flagged, duplicates, active] = await Promise.all([
       IncidentReport.countDocuments(filter),
       IncidentReport.countDocuments({ ...filter, status: 'pending' }),
@@ -87,6 +88,7 @@ router.get('/', protect, async (req, res) => {
     const { status = 'all', category = 'all', district = '', mine, flagged } = req.query;
     const filter = {};
     if (req.user.role === 'researcher' || mine === 'true') filter.reportedBy = req.user._id;
+    if (req.user.role === 'ward_rep') { const a = req.user.wardRepresentativeApplication || {}; filter['location.district'] = a.district || '__none__'; filter['location.ward'] = String(a.ward || '__none__'); }
     if (status !== 'all') filter.status = status;
     if (category !== 'all') filter.category = category;
     if (district) filter['location.district'] = new RegExp(district, 'i');
@@ -169,6 +171,7 @@ router.get('/:id', protect, async (req, res) => {
       .populate('comments.user', 'name role avatarHue');
     if (!report) return res.status(404).json({ error: 'Report not found' });
     if (req.user.role === 'researcher' && String(report.reportedBy._id) !== String(req.user._id)) return res.status(404).json({ error: 'Report not found' });
+    if (req.user.role === 'ward_rep') { const a = req.user.wardRepresentativeApplication || {}; if (report.location?.district !== a.district || String(report.location?.ward || '') !== String(a.ward || '')) return res.status(404).json({ error: 'Report not found' }); }
     const duplicates = await IncidentReport.find({ duplicateOf: report._id }).populate('reportedBy', 'name email role avatarHue');
     res.json({ report: { ...serializeReport(report, req.user._id), duplicates: duplicates.map(d => serializeReport(d, req.user._id)) } });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -176,7 +179,7 @@ router.get('/:id', protect, async (req, res) => {
 
 router.patch('/:id', protect, async (req, res) => {
   try {
-    if (!['admin', 'analyst'].includes(req.user.role)) return res.status(403).json({ error: 'Only analysts or admins can manage reports' });
+    if (!['admin', 'analyst', 'ward_rep'].includes(req.user.role)) return res.status(403).json({ error: 'Only analysts, admins, or ward representatives can manage reports' });
     const report = await IncidentReport.findById(req.params.id);
     if (!report) return res.status(404).json({ error: 'Report not found' });
     const { action, ...payload } = req.body;
@@ -237,3 +240,5 @@ router.patch('/:id', protect, async (req, res) => {
 });
 
 module.exports = router;
+
+

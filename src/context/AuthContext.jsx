@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { get, post, saveToken, clearToken, getToken } from '@/lib/api';
@@ -28,12 +28,28 @@ export function AuthProvider({ children }) {
   }, [router]);
 
   const signup = useCallback(async (values) => {
+    clearToken();
     const data = await post('/api/auth/signup', values);
+    const appStatus = data.user?.wardRepresentativeApplication?.status;
+    if (!data.token || data.pending || data.user?.status !== 'active' || appStatus === 'pending' || appStatus === 'rejected') {
+      clearToken();
+      setUser(null);
+      router.push('/login');
+      return data.user;
+    }
     saveToken(data.token);
     setUser(data.user);
     router.push('/dashboard');
     return data.user;
   }, [router]);
+
+  const verifyEmail = useCallback(async (otp) => {
+    const data = await post('/api/auth/verify-email', { otp });
+    setUser(data.user);
+    return data.user;
+  }, []);
+
+  const resendEmailOtp = useCallback(async () => post('/api/auth/resend-email-otp', {}), []);
 
   const logout = useCallback(() => {
     clearToken();
@@ -41,8 +57,11 @@ export function AuthProvider({ children }) {
     router.push('/login');
   }, [router]);
 
-  const value = useMemo(() => ({ user, loading, login, signup, logout }), [user, loading, login, signup, logout]);
+  const value = useMemo(() => ({ user, loading, login, signup, logout, verifyEmail, resendEmailOtp }), [user, loading, login, signup, logout, verifyEmail, resendEmailOtp]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() { return useContext(AuthContext); }
+
+
+

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { Link2, ShieldCheck } from 'lucide-react';
 
 export function NepalCivicMark({ className = 'h-10 w-10' }) {
@@ -18,7 +18,7 @@ export function NepalCivicMark({ className = 'h-10 w-10' }) {
   );
 }
 
-export function CivicLogo({ compact = false }) {
+export function CivicLogo({ compact = false, light = false }) {
   return (
     <div className="flex items-center gap-2.5">
       <div className="relative grid h-10 w-10 place-items-center rounded-lg bg-[#fff7ec] shadow-sm">
@@ -29,9 +29,10 @@ export function CivicLogo({ compact = false }) {
       </div>
       {!compact && (
         <div className="leading-tight">
-          <p className="text-sm font-extrabold tracking-tight text-[#102a2b]">
+          <p className={light ? 'text-sm font-extrabold tracking-tight text-white' : 'text-sm font-extrabold tracking-tight text-[#102a2b]'}>
             Civic<span className="font-extrabold">दृष्टि</span>
           </p>
+          <p className={light ? 'text-[9px] font-bold uppercase tracking-[0.28em] text-white/70' : 'text-[9px] font-bold uppercase tracking-[0.28em] text-[#8c8272]'}>Civic Archive</p>
         </div>
       )}
     </div>
@@ -42,9 +43,9 @@ export function CivicTrustStrip({ className = '' }) {
   return (
     <div className={`grid grid-cols-3 gap-2 text-center ${className}`}>
       {[
-        ['Report', 'a citizen raises a real ward problem'],
-        ['Verify', 'neighbors and staff confirm what is happening'],
-        ['Resolve', 'the responsible office closes the loop'],
+        ['Report', 'citizens raise real ward problems'],
+        ['Budget', 'public money is tracked to ward level'],
+        ['Resolve', 'offices close the loop in public'],
       ].map(([title, copy]) => (
         <div key={title} className="rounded-lg border border-white/15 bg-white/10 p-3">
           <p className="text-sm font-bold text-white">{title}</p>

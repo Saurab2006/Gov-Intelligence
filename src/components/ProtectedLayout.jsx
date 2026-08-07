@@ -1,10 +1,11 @@
-'use client';
+﻿'use client';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import OfflineBanner from './OfflineBanner';
+import ImportantNoticeBanner from './ImportantNoticeBanner';
 
 export default function ProtectedLayout({ children }) {
   const router = useRouter();
@@ -30,8 +31,10 @@ export default function ProtectedLayout({ children }) {
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
         <OfflineBanner />
+        <ImportantNoticeBanner />
         <main className="flex-1 p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );
 }
+

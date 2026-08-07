@@ -1,9 +1,9 @@
 ﻿'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { get, patch, post } from '@/lib/api';
+import { get, patch, post, getToken } from '@/lib/api';
 import { formatNPR, cn } from '@/lib/format';
 import { useAuth } from '@/context/AuthContext';
-import { Check, ChevronRight, Layers3, ListTree, Map, Search, Send, Table2, X } from 'lucide-react';
+import { Check, ChevronRight, Download, ListTree, Map, Search, Send, Table2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const emptyProposal = { title: '', department: '', sector: '', amount: '', fiscalYear: '', district: '', municipality: '', ward: '', reason: '' };
@@ -25,7 +25,8 @@ export default function BudgetPage() {
   const [saving, setSaving] = useState(false);
   const [proposal, setProposal] = useState(emptyProposal);
 
-  const canPropose = user?.role === 'analyst';
+  const canPropose = user?.role === 'analyst' || user?.role === 'ward_rep';
+  const isWardRep = user?.role === 'ward_rep';
   const canApprove = user?.role === 'admin';
   const currentLevel = LEVELS[Math.min(path.length, LEVELS.length - 1)];
   const parent = path[path.length - 1] || null;
@@ -40,7 +41,7 @@ export default function BudgetPage() {
 
   const loadChanges = () => {
     if (!user || user.role === 'researcher') return;
-    get('/api/budgets/changes?status=pending').then(d => setChanges(d.changes || [])).catch(() => {});
+    get('/api/budgets/changes?status=all&limit=25').then(d => setChanges(d.changes || [])).catch(() => {});
   };
 
   useEffect(() => { load(); }, []);
@@ -78,7 +79,26 @@ export default function BudgetPage() {
     setProposal({ title: item.title || '', department: item.department || '', sector: item.sector || '', amount: item.amount || '', fiscalYear: item.fiscalYear || '', district: item.district || '', municipality: item.municipality || '', ward: item.ward || '', reason: '' });
   };
 
-  const startCreate = () => { setSelected(null); setCreating(true); setProposal(emptyProposal); };
+  const startCreate = () => { const a = user?.wardRepresentativeApplication || {}; setSelected(null); setCreating(true); setProposal(isWardRep ? { ...emptyProposal, district: a.district || '', municipality: a.municipality || '', ward: a.ward || '' } : emptyProposal); };
+
+  const downloadCsv = async () => {
+    try {
+      const res = await fetch('/api/budgets/export.csv', { headers: { Authorization: `Bearer ${getToken() || ''}` } });
+      if (!res.ok) throw new Error('Could not export CSV');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'civicdrishti-budget-export.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Budget CSV downloaded');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
 
   const submitProposal = async (event) => {
     event.preventDefault();
@@ -87,7 +107,7 @@ export default function BudgetPage() {
     try {
       if (creating) await post('/api/budgets/changes', proposal);
       else await post(`/api/budgets/${selected._id}/changes`, proposal);
-      toast.success(creating ? 'New budget record sent for approval' : 'Budget update sent for approval');
+      toast.success(isWardRep ? 'Ward budget edit sent for admin approval' : (creating ? 'New budget record sent for approval' : 'Budget update sent for approval'));
       setCreating(false); setSelected(null); setProposal(emptyProposal); loadChanges(); load();
     } catch (err) { toast.error(err.message); }
     setSaving(false);
@@ -96,7 +116,7 @@ export default function BudgetPage() {
   const reviewChange = async (id, status) => {
     try {
       await patch(`/api/budgets/changes/${id}`, { status });
-      setChanges(prev => prev.filter(c => c._id !== id));
+      setChanges(prev => prev.map(c => c._id === id ? { ...c, status } : c));
       toast.success(status === 'approved' ? 'Approved' : 'Rejected');
       load();
     } catch (err) { toast.error(err.message); }
@@ -116,9 +136,12 @@ export default function BudgetPage() {
         <div>
           <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#dc143c]">Civicदृष्टि live public money chain</p>
           <h1 className="mt-1 text-2xl font-black text-[#102a2b]">Province to Ward Budget Tracking</h1>
-          <p className="mt-1 text-sm text-[#65706c]">Follow allocation, live spend, and work completion from Nepal's 7 provinces down to districts, municipalities, and wards.</p>
+          <p className="mt-1 text-sm text-[#65706c]">{isWardRep ? `You are managing ${user?.wardRepresentativeApplication?.district || 'your district'}, ${user?.wardRepresentativeApplication?.municipality || 'your municipality'}, Ward ${user?.wardRepresentativeApplication?.ward || ''}.` : `Follow allocation, live spend, and work completion from Nepal's 7 provinces down to districts, municipalities, and wards.`}</p>
         </div>
-        {canPropose && <button onClick={startCreate} className="h-10 rounded-lg bg-[#dc143c] px-4 text-sm font-black text-white hover:bg-[#b80f31]">Add budget record</button>}
+        <div className="flex flex-wrap gap-2">
+          <button onClick={downloadCsv} className="flex h-10 items-center gap-2 rounded-lg border border-[#ded6c8] bg-white px-4 text-sm font-black text-[#0f3d3e] hover:bg-[#fffaf2]"><Download className="h-4 w-4" />Export CSV</button>
+          {canPropose && <button onClick={startCreate} className="h-10 rounded-lg bg-[#dc143c] px-4 text-sm font-black text-white hover:bg-[#b80f31]">Add budget record</button>}
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -197,6 +220,8 @@ function ProposalForm({ creating, selected, proposal, setProposal, submitProposa
   return <form onSubmit={submitProposal} className="rounded-lg border border-[#ded6c8] bg-white p-5 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-black text-[#102a2b]">{creating ? 'Add budget record' : selected ? 'Propose edit' : 'Analyst workspace'}</h2><p className="text-xs text-[#65706c]">Changes go to admin approval.</p></div>{enabled && <button type="button" onClick={cancel} className="rounded-md p-1 text-[#8c8272] hover:bg-[#f7f2ea]"><X className="h-4 w-4" /></button>}</div>{['title','department','sector','fiscalYear','district','municipality','ward'].map(f => <input key={f} disabled={!enabled} value={proposal[f]} onChange={e => setProposal(p => ({ ...p, [f]: e.target.value }))} placeholder={f} className="mb-2 h-10 w-full rounded-lg border border-[#ded6c8] px-3 text-sm outline-none focus:border-[#0f3d3e] disabled:bg-[#f7f2ea]" />)}<input disabled={!enabled} type="number" value={proposal.amount} onChange={e => setProposal(p => ({ ...p, amount: e.target.value }))} placeholder="allocated amount" className="mb-2 h-10 w-full rounded-lg border border-[#ded6c8] px-3 text-sm outline-none focus:border-[#0f3d3e] disabled:bg-[#f7f2ea]" /><textarea disabled={!enabled} value={proposal.reason} onChange={e => setProposal(p => ({ ...p, reason: e.target.value }))} placeholder="Reason" className="mb-3 min-h-20 w-full rounded-lg border border-[#ded6c8] px-3 py-2 text-sm outline-none focus:border-[#0f3d3e] disabled:bg-[#f7f2ea]" /><button disabled={!enabled || saving} className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#0f3d3e] text-sm font-black text-white disabled:opacity-50"><Send className="h-4 w-4" />Submit for approval</button></form>;
 }
 function Approvals({ changes, canApprove, reviewChange }) {
-  return <div className="rounded-lg border border-[#ded6c8] bg-white shadow-sm"><div className="border-b border-[#eee6d8] px-5 py-3"><h2 className="text-sm font-black text-[#102a2b]">{canApprove ? 'Admin approvals' : 'Pending proposals'}</h2></div><div className="max-h-[420px] divide-y divide-[#f2ede4] overflow-y-auto">{changes.length === 0 ? <p className="px-5 py-8 text-center text-sm text-[#8c8272]">No pending changes.</p> : changes.map(change => <div key={change._id} className="p-5"><p className="text-sm font-black text-[#102a2b]">{change.budgetItem?.title || change.proposed?.title || 'New budget record'}</p>{change.requestedBy?.name && <p className="text-xs text-[#65706c]">By {change.requestedBy.name}</p>}{change.reason && <p className="mt-2 rounded-lg bg-[#f7f2ea] p-2 text-xs text-[#65706c]">{change.reason}</p>}{canApprove && <div className="mt-3 flex gap-2"><button onClick={() => reviewChange(change._id, 'approved')} className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 text-xs font-black text-white"><Check className="h-3.5 w-3.5" />Approve</button><button onClick={() => reviewChange(change._id, 'rejected')} className="h-9 flex-1 rounded-lg bg-red-600 text-xs font-black text-white">Reject</button></div>}</div>)}</div></div>;
+  return <div className="rounded-lg border border-[#ded6c8] bg-white shadow-sm"><div className="border-b border-[#eee6d8] px-5 py-3"><h2 className="text-sm font-black text-[#102a2b]">{canApprove ? 'Admin approvals' : 'Pending proposals'}</h2></div><div className="max-h-[420px] divide-y divide-[#f2ede4] overflow-y-auto">{changes.length === 0 ? <p className="px-5 py-8 text-center text-sm text-[#8c8272]">No budget change history yet.</p> : changes.map(change => <div key={change._id} className="p-5"><p className="text-sm font-black text-[#102a2b]">{change.budgetItem?.title || change.proposed?.title || 'New budget record'}</p>{change.requestedBy?.name && <p className="text-xs text-[#65706c]">By {change.requestedBy.name}</p>}{change.reason && <p className="mt-2 rounded-lg bg-[#f7f2ea] p-2 text-xs text-[#65706c]">{change.reason}</p>}<div className="mt-2 flex items-center justify-between"><span className={cn('rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-wide', change.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : change.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700')}>{change.status}</span></div>{canApprove && change.status === 'pending' && <div className="mt-3 flex gap-2"><button onClick={() => reviewChange(change._id, 'approved')} className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 text-xs font-black text-white"><Check className="h-3.5 w-3.5" />Approve</button><button onClick={() => reviewChange(change._id, 'rejected')} className="h-9 flex-1 rounded-lg bg-red-600 text-xs font-black text-white">Reject</button></div>}</div>)}</div></div>;
 }
+
+
 

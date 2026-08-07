@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const BudgetItem = require('../models/BudgetItem');
 const Document = require('../models/Document');
 const Activity = require('../models/Activity');
@@ -7,6 +7,7 @@ const Notification = require('../models/Notification');
 const User = require('../models/User');
 const Project = require('../models/Project');
 const { protect, requireRole } = require('../middleware/auth');
+const { budgetDecisionEmail } = require('../utils/authEmails');
 
 const router = express.Router();
 
@@ -106,15 +107,16 @@ router.get('/tracking', protect, async (req, res) => {
   try {
     const user = req.user._id;
     const [items, projects] = await Promise.all([
-      BudgetItem.find({ user }).select('amount spent status completionOverride province district municipality ward').lean(),
-      Project.find({ user }).select('budget spent status completionOverride province district municipality ward').lean(),
+      BudgetItem.find(req.user.role === 'ward_rep' ? { district: req.user.wardRepresentativeApplication?.district || '__none__', ward: String(req.user.wardRepresentativeApplication?.ward || '__none__') } : { user }).select('amount spent status completionOverride province district municipality ward').lean(),
+      Project.find(req.user.role === 'ward_rep' ? { district: req.user.wardRepresentativeApplication?.district || '__none__', ward: String(req.user.wardRepresentativeApplication?.ward || '__none__') } : { user }).select('budget spent status completionOverride province district municipality ward').lean(),
     ]);
     res.json(buildTracking(items, projects));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 router.get('/', protect, async (req, res) => {
   try {
-    const filter = { user: req.user._id };
+    const filter = req.user.role === 'ward_rep' ? {} : { user: req.user._id };
+    if (req.user.role === 'ward_rep') { const a = req.user.wardRepresentativeApplication || {}; filter.district = a.district || '__none__'; filter.ward = String(a.ward || '__none__'); }
     if (req.query.sector && req.query.sector !== 'all') filter.sector = req.query.sector;
     if (req.query.fiscalYear && req.query.fiscalYear !== 'all') filter.fiscalYear = req.query.fiscalYear;
     if (req.query.district && req.query.district !== 'all') filter.district = req.query.district;
@@ -153,9 +155,10 @@ router.get('/changes', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/changes', protect, requireRole('analyst'), async (req, res) => {
+router.post('/changes', protect, requireRole('analyst', 'ward_rep'), async (req, res) => {
   try {
-    const { title, department, sector, amount, fiscalYear, district, municipality, ward, reason } = req.body;
+    let { title, department, sector, amount, fiscalYear, district, municipality, ward, reason } = req.body;
+    if (req.user.role === 'ward_rep') { const a = req.user.wardRepresentativeApplication || {}; district = a.district || district; municipality = a.municipality || municipality; ward = a.ward || ward; }
     if (!title || !department || !sector || !fiscalYear) return res.status(422).json({ error: 'Title, department, sector, and fiscal year are required' });
     const amountNum = Number(amount);
     if (!Number.isFinite(amountNum) || amountNum < 0) return res.status(422).json({ error: 'Amount must be a valid positive number' });
@@ -166,13 +169,15 @@ router.post('/changes', protect, requireRole('analyst'), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/:id/changes', protect, requireRole('analyst'), async (req, res) => {
+router.post('/:id/changes', protect, requireRole('analyst', 'ward_rep'), async (req, res) => {
   try {
-    const budgetItem = await BudgetItem.findOne({ _id: req.params.id, user: req.user._id });
+    const budgetFilter = req.user.role === 'ward_rep' ? { _id: req.params.id, district: req.user.wardRepresentativeApplication?.district || '__none__', ward: String(req.user.wardRepresentativeApplication?.ward || '__none__') } : { _id: req.params.id, user: req.user._id };
+    const budgetItem = await BudgetItem.findOne(budgetFilter);
     if (!budgetItem) return res.status(404).json({ error: 'Budget item not found' });
     const allowed = ['title', 'department', 'sector', 'amount', 'fiscalYear', 'district', 'municipality', 'ward'];
     const proposed = {};
     allowed.forEach(key => { if (req.body[key] !== undefined && req.body[key] !== '') proposed[key] = req.body[key]; });
+    if (req.user.role === 'ward_rep') { const a = req.user.wardRepresentativeApplication || {}; proposed.district = a.district || proposed.district; proposed.municipality = a.municipality || proposed.municipality; proposed.ward = a.ward || proposed.ward; }
     if (proposed.amount !== undefined) {
       proposed.amount = Number(proposed.amount);
       if (!Number.isFinite(proposed.amount) || proposed.amount < 0) return res.status(422).json({ error: 'Amount must be a valid positive number' });
@@ -188,13 +193,15 @@ router.patch('/changes/:id', protect, requireRole('admin'), async (req, res) => 
   try {
     const { status } = req.body;
     if (!['approved', 'rejected'].includes(status)) return res.status(422).json({ error: 'Status must be approved or rejected' });
-    const change = await ChangeRequest.findById(req.params.id).populate('budgetItem');
+    const change = await ChangeRequest.findById(req.params.id).populate('budgetItem').populate('requestedBy', 'name email');
     if (!change) return res.status(404).json({ error: 'Change request not found' });
     if (change.status !== 'pending') return res.status(409).json({ error: 'Change request already reviewed' });
     change.status = status;
     change.reviewedBy = req.user._id;
     change.reviewedAt = new Date();
     await change.save();
+
+    if (change.requestedBy?.email) budgetDecisionEmail(change.requestedBy, change, status);
 
     if (status === 'approved') {
       if (change.type === 'create' || !change.budgetItem) {
@@ -233,4 +240,7 @@ router.delete('/:id/flag', protect, requireRole('admin'), async (req, res) => {
 });
 
 module.exports = router;
+
+
+
 

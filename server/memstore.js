@@ -1,6 +1,8 @@
 ﻿const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { fallbackSuggestAuthoritiesForArea } = require('./utils/authorityAI');
+const { sendEmailQuietly } = require('./utils/email');
+const { code, hashCode, expires, validHash, welcomeEmail, otpEmail, resetEmail, accountDecisionEmail, budgetDecisionEmail } = require('./utils/authEmails');
 
 function id() { return crypto.randomBytes(12).toString('hex'); }
 function now() { return new Date().toISOString(); }
@@ -17,6 +19,8 @@ const reports = [];
 const notifications = [];
 const authorities = [];
 const reviews = [];
+const notices = [];
+const wardUnits = [];
 
 // ---- civic reporting reference data ----
 const REPORT_CATEGORIES = [
@@ -222,21 +226,48 @@ function seedForUser(userId) {
 const store = {
   // Auth
   async findUserByEmail(email) { return users.find(u => u.email === email) || null; },
-  async createUser({ name, email, password, role, organization, citizenshipDoc, citizenshipDocName }) {
+  async createUser({ name, email, password, role, organization, citizenshipDoc, citizenshipDocName, province, district, municipality, ward, applicationDetails }) {
     const hashed = await bcrypt.hash(password, 12);
-    const jobTitle = role === 'admin' ? 'Administrator' : role === 'analyst' ? 'Analyst' : 'Researcher';
+    const jobTitle = role === 'admin' ? 'Administrator' : role === 'analyst' ? 'Analyst' : role === 'ward_rep' ? 'Ward Representative' : 'Researcher';
     const u = {
       _id: id(), name, email: email.toLowerCase().trim(), password: hashed, role,
       organization: organization || 'Independent', jobTitle, avatarHue: Math.floor(Math.random() * 360),
-      status: 'active', createdAt: now(),
-      citizenshipDoc: role === 'researcher' ? (citizenshipDoc || '') : '',
-      citizenshipDocName: role === 'researcher' ? (citizenshipDocName || '') : '',
-      verificationStatus: role === 'researcher' ? 'pending' : 'n/a',
+      status: role === 'ward_rep' ? 'suspended' : 'active', createdAt: now(),
+      citizenshipDoc: ['researcher', 'ward_rep'].includes(role) ? (citizenshipDoc || '') : '',
+      citizenshipDocName: ['researcher', 'ward_rep'].includes(role) ? (citizenshipDocName || '') : '',
+      verificationStatus: ['researcher', 'ward_rep'].includes(role) ? 'pending' : 'n/a',
+      emailVerified: false, emailOtpHash: '', emailOtpExpires: null, resetPasswordHash: '', resetPasswordExpires: null,
+      wardRepresentativeApplication: role === 'ward_rep' ? { requested: true, status: 'pending', province: province || '', district: district || '', municipality: municipality || '', ward: ward || '', details: applicationDetails || '', document: citizenshipDoc || '', documentName: citizenshipDocName || '', reviewedAt: null } : { requested: false, status: 'none' },
     };
     users.push(u);
     return u;
   },
   async comparePassword(user, candidate) { return bcrypt.compare(candidate, user.password); },
+  async setPassword(user, password) {
+    user.password = await bcrypt.hash(password, 12);
+    user.resetPasswordHash = '';
+    user.resetPasswordExpires = null;
+    user.updatedAt = now();
+    return user;
+  },
+  setEmailOtp(user, otp = code()) {
+    user.emailOtpHash = hashCode(otp);
+    user.emailOtpExpires = expires(15).toISOString();
+    return otp;
+  },
+  verifyEmailOtp(user, otp) {
+    if (!validHash(user.emailOtpHash, otp, user.emailOtpExpires)) return false;
+    user.emailVerified = true;
+    user.emailOtpHash = '';
+    user.emailOtpExpires = null;
+    user.updatedAt = now();
+    return true;
+  },
+  setResetOtp(user, otp = code()) {
+    user.resetPasswordHash = hashCode(otp);
+    user.resetPasswordExpires = expires(15).toISOString();
+    return otp;
+  },
   userCount() { return users.length; },
   toPublic(u) {
     const { password, citizenshipDoc, ...rest } = u;
@@ -257,6 +288,12 @@ const store = {
   getProjects() { return projects; },
   getActivities() { return activities.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5); },
   getBudgetTracking() { return buildBudgetTracking(budgetItems, projects); },
+  getBudgetTrackingForUser(user) {
+    if (user.role !== 'ward_rep') return buildBudgetTracking(budgetItems, projects);
+    const a = user.wardRepresentativeApplication || {};
+    const match = row => row.district === a.district && String(row.ward || '') === String(a.ward || '');
+    return buildBudgetTracking(budgetItems.filter(match), projects.filter(match));
+  },
   filterBudgets({ q, sector, fiscalYear, district, ward, flagged, limit = 100 }) {
     let result = budgetItems.slice();
     if (q) { const re = new RegExp(q, 'i'); result = result.filter(b => re.test(b.title) || re.test(b.district || '')); }
@@ -377,6 +414,8 @@ const store = {
         change.budgetItem = newItem._id;
       }
       activities.push({ _id: id(), user: change.requestedBy, type: 'approval', message: `${status === 'approved' ? 'Approved a new budget record' : 'Rejected a new budget record proposal'}: "${change.proposed.title}"`, createdAt: now() });
+      const requester = users.find(u => u._id === change.requestedBy);
+      if (requester?.email) budgetDecisionEmail(requester, change, status);
       return change;
     }
 
@@ -388,6 +427,8 @@ const store = {
     change.updatedAt = now();
     if (status === 'approved') Object.assign(item, change.proposed, { updatedAt: now() });
     activities.push({ _id: id(), user: change.requestedBy, type: 'approval', message: `${status === 'approved' ? 'Approved' : 'Rejected'} budget update for "${item.title}"`, createdAt: now() });
+    const requester = users.find(u => u._id === change.requestedBy);
+    if (requester?.email) budgetDecisionEmail(requester, { ...change, budgetItem: item }, status);
     return change;
   },
 
@@ -401,12 +442,78 @@ const store = {
   updateUser(userId, updates) {
     const u = users.find(u => u._id === userId);
     if (!u) return null;
-    if (updates.role) u.role = updates.role;
+    const beforeStatus = u.status;
+    const beforeVerification = u.verificationStatus;
+    if (updates.wardRepresentativeStatus && ['approved', 'rejected'].includes(updates.wardRepresentativeStatus)) {
+      u.wardRepresentativeApplication = u.wardRepresentativeApplication || { requested: true };
+      u.wardRepresentativeApplication.status = updates.wardRepresentativeStatus;
+      u.wardRepresentativeApplication.reviewedAt = now();
+      if (updates.wardRepresentativeStatus === 'approved') { u.role = 'ward_rep'; u.status = 'active'; u.verificationStatus = 'verified'; const a = u.wardRepresentativeApplication || {}; if (a.province && a.district && a.ward) store.upsertWardUnit(userId, { province: a.province, district: a.district, municipality: a.municipality || '', ward: a.ward, representative: u._id }); }
+      else { u.status = 'suspended'; u.verificationStatus = 'rejected'; }
+    }
+    if (updates.role && ['admin', 'analyst', 'researcher', 'ward_rep'].includes(updates.role)) u.role = updates.role;
     if (updates.status) u.status = updates.status;
-    if (updates.verificationStatus && ['pending', 'verified', 'rejected'].includes(updates.verificationStatus)) u.verificationStatus = updates.verificationStatus;
+    if (updates.verificationStatus && ['pending', 'verified', 'rejected'].includes(updates.verificationStatus)) { u.verificationStatus = updates.verificationStatus; if (updates.verificationStatus === 'rejected') u.status = 'suspended'; }
+    if ((updates.verificationStatus && beforeVerification !== u.verificationStatus) || (updates.status && beforeStatus !== u.status) || updates.wardRepresentativeStatus) accountDecisionEmail(u, updates.wardRepresentativeStatus || updates.verificationStatus || updates.status);
     return store.toPublic(u);
   },
 
+  listWardUnits(user) {
+    let rows = wardUnits.slice();
+    if (user.role === 'ward_rep') {
+      const a = user.wardRepresentativeApplication || {};
+      rows = rows.filter(w => w.province === a.province && w.district === a.district && String(w.ward) === String(a.ward));
+    }
+    return rows.map(w => ({ ...w, representative: w.representative ? store.toPublic(users.find(u => u._id === w.representative) || {}) : null }));
+  },
+  upsertWardUnit(adminId, { province, district, municipality = '', ward, representative = null }) {
+    if (!province || !district || !ward) return { error: 'Province, district and ward are required' };
+    let row = wardUnits.find(w => w.province === province && w.district === district && (w.municipality || '') === (municipality || '') && String(w.ward) === String(ward));
+    if (!row) {
+      row = { _id: id(), province, district, municipality: municipality || '', ward: String(ward), representative: representative || null, createdBy: adminId, createdAt: now(), updatedAt: now() };
+      wardUnits.push(row);
+    } else {
+      Object.assign(row, { province, district, municipality: municipality || '', ward: String(ward), representative: representative || null, updatedAt: now() });
+    }
+    return { ward: { ...row, representative: row.representative ? store.toPublic(users.find(u => u._id === row.representative) || {}) : null } };
+  },
+  updateWardUnit(wardId, updates) {
+    const row = wardUnits.find(w => w._id === wardId);
+    if (!row) return null;
+    ['province', 'district', 'municipality', 'ward'].forEach(k => { if (updates[k] !== undefined) row[k] = String(updates[k]); });
+    if (updates.representative !== undefined) row.representative = updates.representative || null;
+    row.updatedAt = now();
+    return { ...row, representative: row.representative ? store.toPublic(users.find(u => u._id === row.representative) || {}) : null };
+  },
+  wardApplications() {
+    return users.filter(u => u.wardRepresentativeApplication?.requested).map(store.toPublic);
+  },
+  createNotice(adminId, { title, message, priority = 'important', audience = 'all', expiresInDays = 7 }) {
+    title = String(title || '').trim();
+    message = String(message || '').trim();
+    if (!title || !message) return { error: 'Title and message are required' };
+    if (!['normal', 'important', 'urgent'].includes(priority)) priority = 'important';
+    if (!['all', 'admin', 'analyst', 'researcher'].includes(audience)) audience = 'all';
+    const notice = { _id: id(), title, message, priority, audience, active: true, createdBy: adminId, createdAt: now(), updatedAt: now(), expiresAt: new Date(Date.now() + Math.max(1, Number(expiresInDays) || 7) * 86400000).toISOString() };
+    notices.unshift(notice);
+    const targets = users.filter(u => audience === 'all' || u.role === audience);
+    targets.forEach(u => {
+      store.createNotification(u._id, 'important-notice', title, message, '/dashboard');
+      sendEmailQuietly({ to: u.email, subject: `Important notice: ${title}`, text: `Namaste ${u.name},\n\n${message}\n\nOpen Civicदृष्टि to see the notice.` });
+    });
+    return { notice, emailed: targets.length };
+  },
+  activeNotice(user) {
+    return notices.find(n => n.active && (n.audience === 'all' || n.audience === user.role) && (!n.expiresAt || new Date(n.expiresAt).getTime() > Date.now())) || null;
+  },
+  listNotices() { return notices.slice(0, 50); },
+  setNoticeActive(noticeId, active) {
+    const n = notices.find(n => n._id === noticeId);
+    if (!n) return null;
+    n.active = Boolean(active);
+    n.updatedAt = now();
+    return n;
+  },
   // Token lookup
   findUserById(userId) { return users.find(u => u._id === userId) || null; },
   findUserByPhone(phone) { return users.find(u => u.phone && u.phone === phone) || null; },
@@ -555,6 +662,7 @@ const store = {
     const r = reports.find(x => x._id === reportId);
     if (!r) return null;
     if (user.role === 'researcher' && r.reportedBy !== user._id) return null;
+    if (user.role === 'ward_rep') { const a = user.wardRepresentativeApplication || {}; if (r.location?.district !== a.district || String(r.location?.ward || '') !== String(a.ward || '')) return null; }
     const duplicates = reports.filter(x => x.duplicateOf === r._id).map(store.publicReport);
     return { ...store.publicReport(r), duplicates };
   },
@@ -697,6 +805,8 @@ const store = {
     if (!userId) return null;
     const n = { _id: id(), user: userId, type, title, message, link, read: false, report, createdAt: now() };
     notifications.push(n);
+    const target = users.find(u => u._id === userId);
+    if (target?.email) sendEmailQuietly({ to: target.email, subject: 'Civicदृष्टि: ' + title, text: message + (link ? '\\n\\nOpen: ' + link : '') });
     return n;
   },
   notifyRoles(roles, payload) {
@@ -719,5 +829,19 @@ const store = {
 };
 
 module.exports = store;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

@@ -28,7 +28,7 @@ export default function DashboardPage() {
 
   const Skeleton = ({ className }) => <div className={cn('shimmer rounded-lg', className)} />;
   const k = data?.kpis || {};
-  const roleLabel = user?.role === 'researcher' ? 'Citizen' : user?.role === 'analyst' ? 'Local Body Staff' : 'Executive Admin';
+  const roleLabel = user?.role === 'researcher' ? 'Citizen' : user?.role === 'analyst' ? 'Local Body Staff' : user?.role === 'ward_rep' ? 'Ward Representative' : 'Executive Admin';
 
   const kpis = [
     { label: 'Citizen reports', value: reportStats ? formatNumber(reportStats.total || 0) : loading ? null : '0', icon: ClipboardList, sub: 'people asking for action' },
@@ -50,7 +50,7 @@ export default function DashboardPage() {
               See where people are asking for help, who owns the work, and what has been fixed.
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70">
-              Civicदृष्टि keeps the civic service chain visible: a citizen reports a problem, the community confirms it, officials assign responsibility, and the outcome stays traceable.
+              {user?.role === 'ward_rep' ? `You are approved for ${user?.wardRepresentativeApplication?.province || 'your province'}, ${user?.wardRepresentativeApplication?.district || 'your district'}, ${user?.wardRepresentativeApplication?.municipality || 'your municipality'}, Ward ${user?.wardRepresentativeApplication?.ward || ''}. You can handle issues and budget work only inside this ward.` : 'Civicदृष्टि keeps the civic service chain visible: a citizen reports a problem, the community confirms it, officials assign responsibility, and the outcome stays traceable.'}
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link href="/issues" className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#dc143c] px-4 text-sm font-black text-white hover:bg-[#b80f31]">
@@ -196,3 +196,4 @@ function Panel({ title, subtitle, children }) {
     </section>
   );
 }
+

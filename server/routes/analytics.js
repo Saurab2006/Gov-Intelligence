@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const Document = require('../models/Document');
 const BudgetItem = require('../models/BudgetItem');
 const Project = require('../models/Project');
@@ -24,7 +24,7 @@ router.get('/', protect, async (req, res) => {
 
     const totalBudget = docs.reduce((a, d) => a + (d.totalBudget || 0), 0);
     const deptSet = new Set(budgets.map(b => b.department));
-    const latestFy = docs.length ? docs.sort((a, b) => b.fiscalYear?.localeCompare(a.fiscalYear))[0].fiscalYear : '—';
+    const latestFy = docs.length ? docs.sort((a, b) => b.fiscalYear?.localeCompare(a.fiscalYear))[0].fiscalYear : 'â€”';
 
     // Sector breakdown
     const sectorMap = {};
@@ -78,3 +78,4 @@ router.get('/', protect, async (req, res) => {
 });
 
 module.exports = router;
+

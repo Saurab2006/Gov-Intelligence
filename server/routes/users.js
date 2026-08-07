@@ -1,11 +1,13 @@
-const express = require('express');
+﻿const express = require('express');
 const User = require('../models/User');
 const Document = require('../models/Document');
 const { protect, requireRole } = require('../middleware/auth');
+const WardUnit = require('../models/WardUnit');
+const { accountDecisionEmail } = require('../utils/authEmails');
 
 const router = express.Router();
 
-// GET /api/users — admin only
+// GET /api/users â€” admin only
 router.get('/', protect, requireRole('admin'), async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
@@ -19,14 +21,27 @@ router.get('/', protect, requireRole('admin'), async (req, res) => {
   }
 });
 
-// PATCH /api/users/:id — admin only
+// PATCH /api/users/:id â€” admin only
 router.patch('/:id', protect, requireRole('admin'), async (req, res) => {
   try {
-    const { role, status, verificationStatus } = req.body;
+    const { role, status, verificationStatus, wardRepresentativeStatus } = req.body;
     const update = {};
-    if (role && ['admin', 'analyst', 'researcher'].includes(role)) update.role = role;
+    if (role && ['admin', 'analyst', 'researcher', 'ward_rep'].includes(role)) update.role = role;
     if (status && ['active', 'suspended'].includes(status)) update.status = status;
-    if (verificationStatus && ['pending', 'verified', 'rejected'].includes(verificationStatus)) update.verificationStatus = verificationStatus;
+    if (verificationStatus && ['pending', 'verified', 'rejected'].includes(verificationStatus)) { update.verificationStatus = verificationStatus; if (verificationStatus === 'rejected') update.status = 'suspended'; }
+        const before = await User.findById(req.params.id);
+    if (wardRepresentativeStatus && ['approved', 'rejected'].includes(wardRepresentativeStatus)) {
+      update['wardRepresentativeApplication.status'] = wardRepresentativeStatus;
+      update['wardRepresentativeApplication.reviewedAt'] = new Date();
+      if (wardRepresentativeStatus === 'approved') {
+        update.role = 'ward_rep';
+        update.status = 'active';
+        update.verificationStatus = 'verified';
+      } else {
+        update.status = 'suspended';
+        update.verificationStatus = 'rejected';
+      }
+    }
     const user = await User.findByIdAndUpdate(req.params.id, update, { new: true }).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ user: user.toPublic() });
@@ -35,7 +50,7 @@ router.patch('/:id', protect, requireRole('admin'), async (req, res) => {
   }
 });
 
-// GET /api/users/:id/citizenship-doc — admin/analyst only. Lets staff verify
+// GET /api/users/:id/citizenship-doc â€” admin/analyst only. Lets staff verify
 // a citizen's identity, e.g. before/after flagging one of their reports as fake.
 router.get('/:id/citizenship-doc', protect, requireRole('admin', 'analyst'), async (req, res) => {
   try {
@@ -49,3 +64,6 @@ router.get('/:id/citizenship-doc', protect, requireRole('admin', 'analyst'), asy
 });
 
 module.exports = router;
+
+
+
