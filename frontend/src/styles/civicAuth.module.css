@@ -16,6 +16,7 @@
 .authShell { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr); background: var(--paper); }
 .sidePanel { position: relative; overflow: hidden; min-height: 100vh; border-right: 1px solid var(--line); }
 .sideImage { object-fit: cover; filter: saturate(.88) contrast(.95); }
+.sideVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(.88) contrast(.95); }
 .imageWash { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(250,249,246,.92), rgba(250,249,246,.73) 45%, rgba(250,249,246,.58)), linear-gradient(0deg, rgba(250,249,246,.94), rgba(250,249,246,.18) 55%, rgba(250,249,246,.82)); }
 .sidePanelContent { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; padding: 44px 56px; }
 .brandRow { display: flex; align-items: center; }

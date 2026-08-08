@@ -295,6 +295,7 @@ The project uses npm workspaces.
 
 ```bash
 npm install
+npm install maplibre-gl
 ```
 
 ### 3. Configure Environment Variables

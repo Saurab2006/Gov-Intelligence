@@ -21,6 +21,7 @@ const incidentReportSchema = new mongoose.Schema({
 
   location: {
     address:      { type: String, trim: true },
+    province:     { type: String, trim: true },
     district:     { type: String, trim: true },
     municipality: { type: String, trim: true },
     ward:         { type: String, trim: true },
@@ -32,6 +33,8 @@ const incidentReportSchema = new mongoose.Schema({
   reporterContact: { type: String, trim: true, default: '' },
   photo:           { type: String, default: '' },
   photoName:       { type: String, trim: true, default: '' },
+  photos:          [{ type: String }],
+  photoNames:      [{ type: String }],
   viaSms:          { type: Boolean, default: false },
   upvotes:         [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   comments:        [commentSchema],

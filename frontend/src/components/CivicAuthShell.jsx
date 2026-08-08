@@ -1,6 +1,5 @@
 ﻿'use client';
 import Link from 'next/link';
-import Image from 'next/image';
 import styles from '@/styles/civicAuth.module.css';
 import { CivicLogo } from '@/components/CivicBrand';
 
@@ -9,7 +8,16 @@ export default function CivicAuthShell({ activeTab, children }) {
     <div className={styles.shell}>
       <div className={styles.authShell}>
         <section className={styles.sidePanel}>
-          <Image src="/civic-temple.png" alt="Kathmandu temples and mountains" fill priority sizes="(max-width: 900px) 100vw, 50vw" className={styles.sideImage} />
+          <video
+            src="/nepal-flag-temple.mp4"
+            poster="/civic-temple.png"
+            autoPlay
+            muted
+            loop
+            playsInline
+            aria-hidden="true"
+            className={styles.sideVideo}
+          />
           <div className={styles.imageWash} />
           <div className={styles.sidePanelContent}>
             <div className={styles.brandRow}><CivicLogo /></div>

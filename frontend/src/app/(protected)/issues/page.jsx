@@ -6,9 +6,10 @@ import { relativeTime, cn } from '@/lib/format';
 import { toast } from 'sonner';
 import {
   AlertTriangle, MapPin, Plus, ArrowRight, Clock, Copy, ShieldAlert,
-  Loader2, X, Crosshair, Check, ImageIcon,
+  Loader2, X, ImagePlus,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import MapPicker from '@/components/MapPicker';
 
 const STATUS_STYLE = {
   pending: 'bg-amber-50 text-amber-700 border-amber-100',
@@ -171,51 +172,46 @@ const SEVERITIES = [
   { value: 'critical', label: 'Critical — danger to safety' },
 ];
 
+const MAX_PHOTOS = 5;
+
 function ReportForm({ meta, onClose, onCreated }) {
-  const [form, setForm] = useState({ title: '', category: meta.categories[0]?.value || 'flood', severity: 'medium', description: '', address: '', district: '', municipality: '', ward: '', reporterContact: '' });
+  const [form, setForm] = useState({ title: '', category: meta.categories[0]?.value || 'flood', severity: 'medium', description: '', address: '', province: '', district: '', municipality: '', ward: '', reporterContact: '' });
   const [submitting, setSubmitting] = useState(false);
   const [coords, setCoords] = useState(null);
-  const [locating, setLocating] = useState(false);
-  const [photoFile, setPhotoFile] = useState(null);
+  const [photos, setPhotos] = useState([]);
   const [photoError, setPhotoError] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-
   const handlePhotoChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { setPhotoError('Please upload an image'); return; }
-    if (file.size > 5 * 1024 * 1024) { setPhotoError('Photo is too large - max 5MB'); return; }
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    if (photos.length + files.length > MAX_PHOTOS) { setPhotoError(`You can add up to ${MAX_PHOTOS} photos`); return; }
     setPhotoError('');
-    try {
-      const dataUrl = await fileToDataUrl(file);
-      setPhotoFile({ name: file.name, dataUrl });
-    } catch {
-      setPhotoError('Could not read that photo');
+    const next = [];
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) { setPhotoError('Please upload images only'); continue; }
+      if (file.size > 5 * 1024 * 1024) { setPhotoError('Each photo must be under 5MB'); continue; }
+      try { next.push({ name: file.name, dataUrl: await fileToDataUrl(file) }); }
+      catch { setPhotoError('Could not read one of the photos'); }
     }
+    setPhotos(p => [...p, ...next].slice(0, MAX_PHOTOS));
   };
-  const captureLocation = () => {
-    if (!navigator.geolocation) { toast.error('Location isn\'t available in this browser'); return; }
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setLocating(false); toast.success('Location pinned — this will show on the map'); },
-      () => { setLocating(false); toast.error('Could not get your location'); },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  };
+  const removePhoto = (idx) => setPhotos(p => p.filter((_, i) => i !== idx));
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.description.trim() || !form.address.trim()) { toast.error('Title, description and address are required'); return; }
+    if (!form.title.trim() || !form.description.trim()) { toast.error('Title and description are required'); return; }
     if (!form.reporterContact.trim()) { toast.error('Please add a contact number — it\'s required so authorities can reach you'); return; }
-    if (!coords) { toast.error('Please pin your live location — it\'s required to submit a report'); return; }
+    if (!coords) { toast.error('Please select a location on the map'); return; }
     setSubmitting(true);
     try {
       const { report } = await post('/api/reports', {
         title: form.title, category: form.category, severity: form.severity, description: form.description,
         reporterContact: form.reporterContact,
-        photo: photoFile?.dataUrl || '', photoName: photoFile?.name || '',
-        location: { address: form.address, district: form.district, municipality: form.municipality, ward: form.ward, lat: coords?.lat ?? null, lng: coords?.lng ?? null },
+        photo: photos[0]?.dataUrl || '', photoName: photos[0]?.name || '',
+        photos: photos.map(p => p.dataUrl), photoNames: photos.map(p => p.name),
+        location: { address: form.address, province: form.province, district: form.district, municipality: form.municipality, ward: form.ward, lat: coords?.lat ?? null, lng: coords?.lng ?? null },
       });
       if (report.duplicateOfTitle) {
         toast.success(`Linked to an existing report: "${report.duplicateOfTitle}". You'll be notified when it's resolved.`);
@@ -230,14 +226,21 @@ function ReportForm({ meta, onClose, onCreated }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
       <form onClick={e => e.stopPropagation()} onSubmit={submit} className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
           <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-brand-500" />Report an Issue</h3>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50"><X className="w-4 h-4" /></button>
         </div>
-        <div className="p-5 space-y-4">
-          <Field label="What's the problem?">
-            <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Flooded underpass near Kalanki tunnel" className="input" />
+        <div className="p-5 space-y-5">
+          <p className="text-xs leading-5 text-gray-500">Your report is checked against nearby issues. If others reported the same problem, you'll join their issue to raise its community impact — and you still get your own tracking ID.</p>
+
+          <Field label="Title">
+            <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Large pothole near Bhrikuti Chowk" className="input" />
           </Field>
+
+          <Field label="Description">
+            <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3} placeholder="Describe the issue, when you noticed it, and how it affects the community." className="input resize-none" />
+          </Field>
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Category">
               <select value={form.category} onChange={e => set('category', e.target.value)} className="input">
@@ -250,50 +253,55 @@ function ReportForm({ meta, onClose, onCreated }) {
               </select>
             </Field>
           </div>
-          <Field label="Description">
-            <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3} placeholder="What's happening, since when, and who's affected?" className="input resize-none" />
-          </Field>
-          <Field label="Location / landmark">
-            <input value={form.address} onChange={e => set('address', e.target.value)} placeholder="e.g. Kalanki tunnel, Ring Road" className="input" />
-          </Field>
+
           <div>
-            <button type="button" onClick={captureLocation} disabled={locating} className={cn('h-9 px-3 rounded-lg border text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60', coords ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100')}>
-              {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : coords ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Crosshair className="w-3.5 h-3.5" />}
-              {coords ? 'Live location pinned — tap to update' : 'Pin my live location (required)'}
-            </button>
-            {!coords && <p className="mt-1 text-[11px] text-gray-400">We need your live GPS location so field teams can find the exact spot.</p>}
+            <span className="mb-1.5 block text-xs font-semibold text-gray-700">Location</span>
+            <MapPicker value={coords} onChange={setCoords} />
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="District"><input value={form.district} onChange={e => set('district', e.target.value)} className="input" /></Field>
-            <Field label="Municipality"><input value={form.municipality} onChange={e => set('municipality', e.target.value)} className="input" /></Field>
-            <Field label="Ward"><input value={form.ward} onChange={e => set('ward', e.target.value)} className="input" /></Field>
-          </div>
+
+          <Field label="Address / landmark (optional)">
+            <input value={form.address} onChange={e => set('address', e.target.value)} placeholder="Near the main bus stop" className="input" />
+          </Field>
+
+          <fieldset className="rounded-xl border border-gray-200 p-3.5">
+            <legend className="px-1 text-xs font-semibold text-gray-500">Administrative area</legend>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Province"><input value={form.province} onChange={e => set('province', e.target.value)} className="input" /></Field>
+              <Field label="District"><input value={form.district} onChange={e => set('district', e.target.value)} className="input" /></Field>
+              <Field label="Municipality"><input value={form.municipality} onChange={e => set('municipality', e.target.value)} className="input" /></Field>
+              <Field label="Ward"><input type="number" min="1" value={form.ward} onChange={e => set('ward', e.target.value)} className="input" /></Field>
+            </div>
+          </fieldset>
+
           <div>
-            <span className="block text-xs font-semibold text-gray-700 mb-1">Evidence photo (optional, max 5MB)</span>
-            {!photoFile ? (
-              <label className="flex h-20 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500 hover:border-brand-300 hover:bg-brand-50/40">
-                <ImageIcon className="w-4 h-4" /> Upload photo
-                <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
-              </label>
-            ) : (
-              <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 p-2">
-                <img src={photoFile.dataUrl} alt="Evidence preview" className="h-14 w-16 rounded-lg object-cover" />
-                <span className="min-w-0 flex-1 truncate text-xs font-semibold text-emerald-700">{photoFile.name}</span>
-                <button type="button" onClick={() => setPhotoFile(null)} className="rounded-lg p-1 text-emerald-700 hover:bg-emerald-100"><X className="w-4 h-4" /></button>
-              </div>
-            )}
-            {photoError && <p className="mt-1 text-xs text-red-500">{photoError}</p>}
+            <span className="block text-xs font-semibold text-gray-700 mb-1.5">Photos (optional, up to {MAX_PHOTOS})</span>
+            <div className="flex flex-wrap gap-2">
+              {photos.map((p, i) => (
+                <div key={i} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-gray-200">
+                  <img src={p.dataUrl} alt={p.name} className="h-full w-full object-cover" />
+                  <button type="button" onClick={() => removePhoto(i)} className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"><X className="h-3 w-3" /></button>
+                </div>
+              ))}
+              {photos.length < MAX_PHOTOS && (
+                <label className="flex h-16 w-16 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 text-gray-400 hover:border-brand-300 hover:bg-brand-50/40">
+                  <ImagePlus className="h-4 w-4" />
+                  <input type="file" accept="image/*" multiple onChange={handlePhotoChange} className="hidden" />
+                </label>
+              )}
+            </div>
+            {photoError && <p className="mt-1.5 text-xs text-red-500">{photoError}</p>}
           </div>
+
           <Field label="Your contact number (required)">
             <input value={form.reporterContact} onChange={e => set('reporterContact', e.target.value)} placeholder="e.g. 98XXXXXXXX" className="input" required />
             <span className="block mt-1 text-[11px] text-gray-400">Used to reach you for follow-up and to verify this isn't a fake report.</span>
           </Field>
         </div>
-        <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2 sticky bottom-0 bg-white">
-          <button type="button" onClick={onClose} className="h-10 px-4 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
-          <button type="submit" disabled={submitting} className="h-10 px-4 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 disabled:opacity-60 flex items-center gap-2">
-            {submitting && <Loader2 className="w-4 h-4 animate-spin" />}Submit Report
+        <div className="px-5 py-4 border-t border-gray-100 sticky bottom-0 bg-white">
+          <button type="submit" disabled={submitting} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-500 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60">
+            {submitting && <Loader2 className="w-4 h-4 animate-spin" />}Submit report
           </button>
+          <button type="button" onClick={onClose} className="mt-2 h-9 w-full rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-50">Cancel</button>
         </div>
       </form>
       <style jsx global>{`.input{width:100%;padding:.5rem .75rem;border-radius:.75rem;border:1px solid #e5e7eb;font-size:.813rem;outline:none}.input:focus{border-color:#2563EB}`}</style>
@@ -304,4 +312,3 @@ function ReportForm({ meta, onClose, onCreated }) {
 function Field({ label, children }) {
   return <label className="block"><span className="block text-xs font-semibold text-gray-700 mb-1">{label}</span>{children}</label>;
 }
-

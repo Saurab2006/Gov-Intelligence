@@ -104,19 +104,21 @@ router.get('/', protect, async (req, res) => {
 router.post('/', protect, async (req, res) => {
   try {
     if (req.user.role !== 'researcher') return res.status(403).json({ error: 'Only researchers can submit a community report' });
-    const { title, category, description, severity, location, reporterContact, photo, photoName } = req.body;
+    const { title, category, description, severity, location, reporterContact, photo, photoName, photos, photoNames } = req.body;
     const spec = REPORT_CATEGORIES.find(c => c.value === category);
     if (!spec) return res.status(422).json({ error: 'Unknown category' });
-    if (!title || !description || !location?.address) return res.status(422).json({ error: 'Title, description and address are required' });
+    if (!title || !description) return res.status(422).json({ error: 'Title and description are required' });
     if (!reporterContact || !reporterContact.trim()) return res.status(422).json({ error: 'A contact number is required so authorities can reach you about this report' });
-    if (location?.lat == null || location?.lng == null) return res.status(422).json({ error: 'Please pin your live location - it is required to submit a report' });
-    if (photo && photo.length > 7 * 1024 * 1024) return res.status(422).json({ error: 'Photo is too large - max 5MB' });
+    if (location?.lat == null || location?.lng == null) return res.status(422).json({ error: 'Please select a location on the map - it is required to submit a report' });
+    const photoList = Array.isArray(photos) ? photos.slice(0, 5) : (photo ? [photo] : []);
+    const photoNameList = Array.isArray(photoNames) ? photoNames.slice(0, 5) : (photoName ? [photoName] : []);
+    if (photoList.some(p => p && p.length > 7 * 1024 * 1024)) return res.status(422).json({ error: 'Each photo must be under 5MB' });
 
     const dup = await findDuplicateCandidate(category, location);
     const days = estimateDays(category, severity);
     const report = await IncidentReport.create({
       title: title.trim(), category, description: description.trim(), severity: severity || 'medium', location, reporterContact,
-      photo: photo || '', photoName: photoName || '', upvotes: [req.user._id], comments: [], reportedBy: req.user._id,
+      photo: photoList[0] || '', photoName: photoNameList[0] || '', photos: photoList, photoNames: photoNameList, upvotes: [req.user._id], comments: [], reportedBy: req.user._id,
       status: dup ? 'duplicate' : 'pending', estimatedDays: dup ? dup.estimatedDays : days, dueDate: dup ? dup.dueDate : addDays(days),
       assignedDepartment: dup ? dup.assignedDepartment : '', assignedContact: dup ? dup.assignedContact : '', duplicateOf: dup ? dup._id : null,
       timeline: [{ action: dup ? 'reported (matched to existing issue)' : 'reported', note: dup ? `Linked to an existing report: "${dup.title}"` : `AI-suggested resolution window: ${days} day(s)`, by: req.user._id }],
@@ -240,5 +242,3 @@ router.patch('/:id', protect, async (req, res) => {
 });
 
 module.exports = router;
-
-

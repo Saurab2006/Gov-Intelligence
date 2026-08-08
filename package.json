@@ -15,5 +15,8 @@
   },
   "devDependencies": {
     "concurrently": "^10.0.4"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.2.0"
   }
 }

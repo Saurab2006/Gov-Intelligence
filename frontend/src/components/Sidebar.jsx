@@ -1,7 +1,7 @@
 ﻿'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, ClipboardList, Gauge, Landmark, LineChart, LogOut, MapPinned, Settings, Table2, Users } from 'lucide-react';
+import { ClipboardList, Gauge, Landmark, LineChart, LogOut, MapPinned, Settings, Table2, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { cn, initials } from '@/lib/format';
 import { CivicLogo } from './CivicBrand';
@@ -12,7 +12,6 @@ const GROUPS = [
     items: [
       { href: '/dashboard', label: 'Overview', icon: Gauge },
       { href: '/budget', label: 'Budget explorer', icon: Table2 },
-      { href: '/departments', label: 'Departments', icon: Building2 },
     ],
   },
   {

@@ -114,7 +114,7 @@ app.post('/api/auth/login', async (req, res) => {
     // Auto-provision demo accounts
     if (!user && email.endsWith('@govinsight.np')) {
       const roleMap = { 'admin@govinsight.np': 'admin', 'analyst@govinsight.np': 'analyst', 'researcher@govinsight.np': 'researcher' };
-      const names = { 'admin@govinsight.np': 'Saurabh', 'analyst@govinsight.np': 'Raja', 'researcher@govinsight.np': 'Anup' };
+      const names = { 'admin@govinsight.np': 'Saurabh', 'analyst@govinsight.np': 'Panas', 'researcher@govinsight.np': 'Sakshi' };
       const demoRole = roleMap[email] || 'analyst';
       user = await store.createUser({ name: names[email] || 'Demo User', email, password: password, role: demoRole, organization: 'Civicदृष्टि' });
       store.seedForUser(user._id);
@@ -543,17 +543,3 @@ async function start() {
 }
 
 start();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
