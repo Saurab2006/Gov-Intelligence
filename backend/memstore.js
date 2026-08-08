@@ -1,6 +1,7 @@
 ﻿const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { fallbackSuggestAuthoritiesForArea } = require('./utils/authorityAI');
+const { embedText, bestSemanticMatch, classifyFreeText, looksNepali } = require('./utils/civicAI');
 const { sendEmailQuietly } = require('./utils/email');
 const { code, hashCode, expires, validHash, welcomeEmail, otpEmail, resetEmail, accountDecisionEmail, budgetDecisionEmail } = require('./utils/authEmails');
 
@@ -148,16 +149,29 @@ function textOverlap(a, b) {
   return shared / Math.min(wa.size, wb.size);
 }
 
-function findDuplicateCandidate(category, location) {
+// Citizens can reopen a "completed" report within this many days if it
+// wasn't actually fixed.
+const REOPEN_WINDOW_DAYS = 7;
+
+function findDuplicateCandidate(category, location, newEmbedding) {
   const cutoff = Date.now() - 21 * 24 * 60 * 60 * 1000; // look back 3 weeks
-  return reports.find(r =>
+  const candidates = reports.filter(r =>
     !r.duplicateOf &&
     r.category === category &&
     !['completed', 'rejected'].includes(r.status) &&
     (r.location.district || '').toLowerCase() === (location.district || '').toLowerCase() &&
-    new Date(r.createdAt).getTime() > cutoff &&
-    textOverlap(r.location.address, location.address) >= 0.4
-  ) || null;
+    new Date(r.createdAt).getTime() > cutoff
+  );
+
+  // Prefer a semantic match (Gemini embeddings on address+description) when
+  // both sides have one computed; fall back to word-overlap on the address
+  // for any candidate filed before this feature (or while Gemini was down).
+  const withEmbedding = candidates.filter(r => Array.isArray(r.embedding) && r.embedding.length);
+  const semanticMatch = newEmbedding ? bestSemanticMatch(newEmbedding, withEmbedding) : null;
+  if (semanticMatch) return semanticMatch;
+
+  const remaining = candidates.filter(r => !withEmbedding.includes(r));
+  return remaining.find(r => textOverlap(r.location.address, location.address) >= 0.4) || null;
 }
 
 // Base authorities every fresh install ships with, so "Assign" always has
@@ -575,7 +589,7 @@ const store = {
     return { report: store.publicReport(r, userId) };
   },
 
-  createReport(userId, { title, category, description, severity, location, reporterContact, photo, photoName, viaSms = false }) {
+  async createReport(userId, { title, category, description, severity, location, reporterContact, photo, photoName, viaSms = false }) {
     const spec = REPORT_CATEGORIES.find(c => c.value === category);
     if (!spec) return { error: 'Unknown category' };
     if (!title || !description || !location?.address) return { error: 'Title, description and address are required' };
@@ -585,25 +599,39 @@ const store = {
     // ~5MB as a base64 data URL (~6.7MB encoded) to match the 5MB photo cap.
     if (photo && photo.length > 7 * 1024 * 1024) return { error: 'Photo is too large â€” max 5MB' };
 
-    const dup = findDuplicateCandidate(category, location);
+    // AI enrichment, best-effort: translate a Nepali description to English
+    // for staff, and embed the address+description so future reports can be
+    // matched to this one semantically, not just by shared words.
+    const cleanDescription = description.trim();
+    const [translation, embedding] = await Promise.all([
+      looksNepali(cleanDescription) ? classifyFreeText(cleanDescription) : null,
+      embedText(`${location.address} â€” ${cleanDescription}`),
+    ]);
+
+    const dup = findDuplicateCandidate(category, location, embedding);
     const days = estimateDays(category, severity);
     const report = {
       _id: id(),
       title: title.trim(),
       category,
-      description: description.trim(),
+      description: cleanDescription,
       severity: severity || 'medium',
       location: { address: location.address || '', district: location.district || '', municipality: location.municipality || '', ward: location.ward || '', lat: location.lat ?? null, lng: location.lng ?? null },
       reportedBy: userId,
       reporterContact: reporterContact || '',
       photo: photo || '', photoName: photoName || '',
       viaSms: !!viaSms,
+      embedding: embedding || undefined,
+      language: translation?.language || (looksNepali(cleanDescription) ? 'ne' : 'en'),
+      translatedDescription: translation?.translatedText || '',
       upvotes: [userId],
       comments: [],
       status: dup ? 'duplicate' : 'pending',
       estimatedDays: dup ? dup.estimatedDays : days,
       dueDate: dup ? dup.dueDate : addDays(days),
       completedAt: null,
+      resolutionPhoto: '', resolutionPhotoName: '',
+      reopenCount: 0, reopenedAt: null,
       assignedDepartment: dup ? dup.assignedDepartment : '',
       assignedContact: dup ? dup.assignedContact : '',
       assignedBy: null,
@@ -720,8 +748,10 @@ const store = {
       r.timeline.push({ action: 'in-progress', note: payload.note || 'Work has started on site', by: actingUser._id, at: now() });
       notifyReporters({ type: 'eta-updated', title: 'Work has started', message: `Crews have started work on "${r.title}".` });
     } else if (action === 'complete') {
+      if (payload.resolutionPhoto && payload.resolutionPhoto.length > 7 * 1024 * 1024) return { error: 'Proof photo is too large â€” max 5MB' };
       r.status = 'completed';
       r.completedAt = now();
+      if (payload.resolutionPhoto) { r.resolutionPhoto = payload.resolutionPhoto; r.resolutionPhotoName = payload.resolutionPhotoName || ''; }
       r.timeline.push({ action: 'completed', note: payload.note || 'Marked complete by analyst', by: actingUser._id, at: now() });
       notifyReporters({ type: 'completed', title: 'Issue resolved', message: `Good news â€” "${r.title}" has been marked complete.` });
       store.notifyRoles(['admin'], { type: 'completed', title: 'Report closed', message: `${actingUser.name} closed "${r.title}".`, link: `/issues/${r._id}`, report: r._id });
@@ -744,6 +774,35 @@ const store = {
       return { error: 'Unknown action' };
     }
     r.updatedAt = now();
+    return { report: store.publicReport(r) };
+  },
+
+  // Lets the original reporter â€” or staff, on their behalf â€” reopen a
+  // report that was marked complete but the underlying problem wasn't
+  // actually fixed. Limited to a short window after completion so old,
+  // genuinely resolved work can't be reopened indefinitely.
+  reopenReport(reportId, actingUser, reason) {
+    const r = reports.find(x => x._id === reportId);
+    if (!r) return { error: 'Report not found' };
+
+    const isOwner = r.reportedBy === actingUser._id;
+    const isStaff = ['admin', 'analyst', 'ward_rep'].includes(actingUser.role);
+    if (!isOwner && !isStaff) return { error: 'Only the reporter or staff can reopen this report' };
+    if (r.status !== 'completed') return { error: 'Only a completed report can be reopened' };
+
+    const deadline = r.completedAt ? new Date(r.completedAt).getTime() + REOPEN_WINDOW_DAYS * 24 * 60 * 60 * 1000 : null;
+    if (deadline && Date.now() > deadline) return { error: `The ${REOPEN_WINDOW_DAYS}-day window to reopen this report has passed` };
+
+    const cleanReason = (reason || '').trim();
+    if (!cleanReason) return { error: 'Tell us what still needs fixing' };
+
+    r.status = 'pending';
+    r.reopenCount = (r.reopenCount || 0) + 1;
+    r.reopenedAt = now();
+    r.timeline.push({ action: 'reopened', note: cleanReason, by: actingUser._id, at: now() });
+    r.updatedAt = now();
+
+    store.notifyRoles(['admin', 'analyst'], { type: 'reopened', title: 'A resolved report was reopened', message: `"${r.title}" was reopened: ${cleanReason}`, link: `/issues/${r._id}`, report: r._id });
     return { report: store.publicReport(r) };
   },
 

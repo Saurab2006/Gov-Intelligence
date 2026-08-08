@@ -4,6 +4,7 @@ const IncidentReport = require('../models/IncidentReport');
 const Notification = require('../models/Notification');
 const { protect } = require('../middleware/auth');
 const { parseInboundSms, helpText, sendSms, normalizePhone, VALID_CATEGORIES } = require('../utils/sms');
+const { classifyFreeText, embedText, looksNepali } = require('../utils/civicAI');
 
 const router = express.Router();
 
@@ -56,27 +57,43 @@ router.post('/inbound', async (req, res) => {
         ? `Report "${report.title}" — status: ${report.status}${report.assignedDepartment ? ` (${report.assignedDepartment})` : ''}. ID: ${String(report._id).slice(-6)}`
         : 'No matching report found. Text your report ID, or REPORT to file a new one.';
     } else if (cmd.type === 'report') {
-      if (!cmd.category) {
+      let category = cmd.category;
+      let aiNote = '';
+      if (!category && cmd.description) {
+        // No recognized category keyword — ask Gemini to classify the free
+        // text instead of immediately rejecting the report.
+        const guess = await classifyFreeText(cmd.description);
+        if (guess.category) { category = guess.category; aiNote = ' (AI-classified from your message)'; }
+      }
+      if (!category) {
         reply = `Category not recognized. Valid categories: ${VALID_CATEGORIES.join(', ')}`;
       } else {
         const smsUser = await findOrCreateSmsUser(phone);
-        const title = (cmd.description || cmd.category).slice(0, 80);
-        const description = cmd.description || cmd.category;
-        const days = estimateDays(cmd.category, 'medium');
+        const title = (cmd.description || category).slice(0, 80);
+        const description = cmd.description || category;
+        const days = estimateDays(category, 'medium');
+        const [translation, embedding] = await Promise.all([
+          looksNepali(description) ? classifyFreeText(description) : null,
+          embedText(`${cmd.district || ''} — ${description}`),
+        ]);
         const report = await IncidentReport.create({
-          title, category: cmd.category, description, severity: 'medium',
+          title, category, description, severity: 'medium',
           location: { address: cmd.district || 'Unspecified (via SMS)', district: cmd.district || '' },
           reporterContact: phone,
           reportedBy: smsUser._id,
           status: 'pending',
           estimatedDays: days,
           dueDate: addDays(days),
-          timeline: [{ action: 'reported', note: 'Submitted via SMS', by: smsUser._id }],
+          embedding: embedding || undefined,
+          language: translation?.language || (looksNepali(description) ? 'ne' : 'en'),
+          translatedDescription: translation?.translatedText || '',
+          viaSms: true,
+          timeline: [{ action: 'reported', note: 'Submitted via SMS' + aiNote, by: smsUser._id }],
         });
         await Promise.all((await User.find({ role: { $in: ['admin', 'analyst'] } }).select('_id')).map(u =>
           Notification.create({ user: u._id, type: 'new-report', title: 'New community report (SMS)', message: `${title} — ${cmd.district || 'location unspecified'}`, link: `/issues/${report._id}`, report: report._id })
         ));
-        reply = `Report received. ID: ${String(report._id).slice(-6)}. Text STATUS ${String(report._id).slice(-6)} to check progress.`;
+        reply = `Report received${aiNote}. ID: ${String(report._id).slice(-6)}. Text STATUS ${String(report._id).slice(-6)} to check progress.`;
       }
     } else {
       reply = `Unrecognized message. Text HELP for commands.\n${helpText()}`;

@@ -7,7 +7,21 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, MapPin, Clock, Copy, ShieldAlert, CheckCircle2, UserCheck,
   PlayCircle, Loader2, Star, Map as MapIcon, Radio, Plus, ShieldCheck, ShieldQuestion, ThumbsUp, MessageCircle, Send,
+  Camera, RotateCcw, Languages,
 } from 'lucide-react';
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read the file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Mirrors the server's REOPEN_WINDOW_DAYS â€” purely for showing/hiding the
+// Reopen button client-side; the server enforces the real deadline.
+const REOPEN_WINDOW_DAYS = 7;
 
 const REPORTER_VERIFICATION_STYLE = {
   verified: { label: 'ID verified', icon: ShieldCheck, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
@@ -46,6 +60,16 @@ export default function ReportDetailPage() {
   const [assignContact, setAssignContact] = useState('');
   const [fakeReason, setFakeReason] = useState('');
   const [showFakeBox, setShowFakeBox] = useState(false);
+
+  const [showCompleteBox, setShowCompleteBox] = useState(false);
+  const [completeNote, setCompleteNote] = useState('');
+  const [resolutionPhoto, setResolutionPhoto] = useState('');
+  const [resolutionPhotoName, setResolutionPhotoName] = useState('');
+  const [photoBusy, setPhotoBusy] = useState(false);
+
+  const [showReopenBox, setShowReopenBox] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+  const [reopenBusy, setReopenBusy] = useState(false);
 
   const [authority, setAuthority] = useState(null);
   const [reviews, setReviews] = useState([]);
@@ -112,10 +136,43 @@ export default function ReportDetailPage() {
     } catch (err) { toast.error(err.message); }
     setCommunityBusy(false);
   };
+
+  const handleResolutionPhoto = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setResolutionPhoto(dataUrl);
+      setResolutionPhotoName(file.name);
+    } catch (err) { toast.error(err.message); }
+    setPhotoBusy(false);
+  };
+
+  const confirmComplete = async () => {
+    await act('complete', { note: completeNote, resolutionPhoto, resolutionPhotoName }, 'Marked complete â€” reporters notified');
+    setShowCompleteBox(false); setCompleteNote(''); setResolutionPhoto(''); setResolutionPhotoName('');
+  };
+
+  const doReopen = async () => {
+    if (!reopenReason.trim()) { toast.error('Tell us what still needs fixing'); return; }
+    setReopenBusy(true);
+    try {
+      const { report: updated } = await post(`/api/reports/${id}/reopen`, { reason: reopenReason.trim() });
+      setReport(prev => ({ ...updated, duplicates: prev?.duplicates || [] }));
+      toast.success('Report reopened');
+      setShowReopenBox(false);
+      setReopenReason('');
+    } catch (err) { toast.error(err.message); }
+    setReopenBusy(false);
+  };
   if (loading) return <div className="max-w-[900px] mx-auto space-y-4"><div className="shimmer h-8 w-40 rounded-lg" /><div className="shimmer h-64 rounded-2xl" /></div>;
   if (!report) return <div className="max-w-[900px] mx-auto text-center py-16 text-gray-400">Report not found.</div>;
 
   const categoryLabel = meta.categories.find(c => c.value === report.category)?.label || report.category;
+  const isOwner = report.reportedBy && user && String(report.reportedBy._id) === String(user._id);
+  const reopenDeadline = report.completedAt ? new Date(new Date(report.completedAt).getTime() + REOPEN_WINDOW_DAYS * 24 * 60 * 60 * 1000) : null;
+  const canReopen = report.status === 'completed' && (isOwner || isStaff) && (!reopenDeadline || Date.now() < reopenDeadline.getTime());
 
   return (
     <>
@@ -140,7 +197,29 @@ export default function ReportDetailPage() {
         </div>
 
         <p className="text-sm text-gray-700 leading-relaxed">{report.description}</p>
-        {report.photo && <img src={report.photo} alt="Report evidence" className="mt-3 max-h-[360px] w-full rounded-xl border border-gray-100 object-cover" />}
+        {report.translatedDescription && (
+          <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-700 flex items-center gap-1"><Languages className="w-3 h-3" />Translated (AI)</p>
+            <p className="text-sm text-blue-900 mt-1">{report.translatedDescription}</p>
+          </div>
+        )}
+
+        {(report.photo || report.resolutionPhoto) && (
+          <div className={cn('grid gap-3 mt-3', report.photo && report.resolutionPhoto ? 'sm:grid-cols-2' : '')}>
+            {report.photo && (
+              <div>
+                {report.resolutionPhoto && <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Reported</p>}
+                <img src={report.photo} alt="Report evidence" className="max-h-[360px] w-full rounded-xl border border-gray-100 object-cover" />
+              </div>
+            )}
+            {report.resolutionPhoto && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 mb-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Proof of resolution</p>
+                <img src={report.resolutionPhoto} alt="Resolution evidence" className="max-h-[360px] w-full rounded-xl border border-emerald-100 object-cover" />
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2 pt-1">
           <InfoPill icon={Clock} label={report.status === 'completed' ? `Resolved ${relativeTime(report.completedAt)}` : `AI estimate: ${report.estimatedDays} day(s) â€” due ${new Date(report.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`} />
@@ -206,14 +285,52 @@ export default function ReportDetailPage() {
           <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-50">
             {report.status === 'pending' && <ActionButton icon={CheckCircle2} label="Verify" onClick={() => act('verify', {}, 'Marked verified')} busy={busy} />}
             {['assigned', 'verified'].includes(report.status) && <ActionButton icon={PlayCircle} label="Start work" onClick={() => act('start', {}, 'Work started')} busy={busy} />}
-            <ActionButton icon={CheckCircle2} label="Mark completed" tone="success" onClick={() => act('complete', {}, 'Marked complete â€” reporters notified')} busy={busy} />
+            <ActionButton icon={CheckCircle2} label="Mark completed" tone="success" onClick={() => setShowCompleteBox(s => !s)} busy={busy} />
             <ActionButton icon={ShieldAlert} label="Flag as fake" tone="danger" onClick={() => setShowFakeBox(s => !s)} busy={busy} />
           </div>
+
+          {showCompleteBox && (
+            <div className="space-y-2 pt-1">
+              <input value={completeNote} onChange={e => setCompleteNote(e.target.value)} placeholder="Optional note about how it was resolved" className="w-full h-9 px-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-brand-500" />
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 h-9 px-3 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 cursor-pointer">
+                  <Camera className="w-3.5 h-3.5" />{photoBusy ? 'Reading photoâ€¦' : resolutionPhotoName || 'Attach proof photo (optional)'}
+                  <input type="file" accept="image/*" className="hidden" onChange={handleResolutionPhoto} disabled={photoBusy} />
+                </label>
+                {resolutionPhoto && <button type="button" onClick={() => { setResolutionPhoto(''); setResolutionPhotoName(''); }} className="text-xs text-gray-400 hover:text-gray-600">Remove</button>}
+              </div>
+              {resolutionPhoto && <img src={resolutionPhoto} alt="Proof preview" className="max-h-40 rounded-lg border border-gray-100 object-cover" />}
+              <button disabled={busy || photoBusy} onClick={confirmComplete} className="h-9 px-3 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-60">Confirm complete</button>
+            </div>
+          )}
 
           {showFakeBox && (
             <div className="flex gap-2 pt-1">
               <input value={fakeReason} onChange={e => setFakeReason(e.target.value)} placeholder="Why is this report fake or invalid?" className="flex-1 h-9 px-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-red-400" />
               <button disabled={busy || !fakeReason.trim()} onClick={() => act('mark-fake', { reason: fakeReason }, 'Report closed as fake').then(() => setShowFakeBox(false))} className="h-9 px-3 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 disabled:opacity-60">Confirm</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {canReopen && (
+        <div className="bg-white rounded-2xl border border-amber-100 p-6 shadow-sm space-y-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><RotateCcw className="w-4 h-4 text-amber-600" />Not actually fixed?</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                {isOwner ? 'You can reopen this within ' : 'The reporter (or staff) can reopen this within '}
+                {reopenDeadline ? `${Math.max(0, Math.ceil((reopenDeadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} day(s)` : `${REOPEN_WINDOW_DAYS} days`} of it being marked complete.
+              </p>
+            </div>
+            {!showReopenBox && <ActionButton icon={RotateCcw} label="Reopen report" onClick={() => setShowReopenBox(true)} busy={reopenBusy} />}
+          </div>
+          {showReopenBox && (
+            <div className="flex gap-2">
+              <input value={reopenReason} onChange={e => setReopenReason(e.target.value)} placeholder="What still needs fixing?" className="flex-1 h-9 px-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-amber-400" />
+              <button disabled={reopenBusy || !reopenReason.trim()} onClick={doReopen} className="h-9 px-3 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-60">
+                {reopenBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Reopen'}
+              </button>
             </div>
           )}
         </div>
@@ -464,6 +581,3 @@ function ActionButton({ icon: Icon, label, onClick, busy, tone }) {
     </button>
   );
 }
-
-
-

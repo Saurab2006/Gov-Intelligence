@@ -21,7 +21,6 @@ const incidentReportSchema = new mongoose.Schema({
 
   location: {
     address:      { type: String, trim: true },
-    province:     { type: String, trim: true },
     district:     { type: String, trim: true },
     municipality: { type: String, trim: true },
     ward:         { type: String, trim: true },
@@ -33,11 +32,15 @@ const incidentReportSchema = new mongoose.Schema({
   reporterContact: { type: String, trim: true, default: '' },
   photo:           { type: String, default: '' },
   photoName:       { type: String, trim: true, default: '' },
-  photos:          [{ type: String }],
-  photoNames:      [{ type: String }],
   viaSms:          { type: Boolean, default: false },
   upvotes:         [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   comments:        [commentSchema],
+
+  // AI enrichment — populated best-effort at creation time. Never required,
+  // so the app behaves identically whether or not GEMINI_API_KEY is set.
+  embedding:            { type: [Number], default: undefined },
+  language:             { type: String, trim: true, default: '' },
+  translatedDescription: { type: String, trim: true, default: '' },
 
   status: {
     type: String,
@@ -48,6 +51,16 @@ const incidentReportSchema = new mongoose.Schema({
   estimatedDays: { type: Number, default: 3 },
   dueDate:       { type: Date },
   completedAt:   { type: Date },
+
+  // Proof-of-resolution photo, captured separately from the intake photo so
+  // "completed" comes with visible before/after evidence, not just a status flip.
+  resolutionPhoto:     { type: String, default: '' },
+  resolutionPhotoName: { type: String, trim: true, default: '' },
+
+  // Lets the original reporter reopen a report that was marked complete but
+  // wasn't actually fixed, within a limited window after completion.
+  reopenCount: { type: Number, default: 0 },
+  reopenedAt:  { type: Date },
 
   assignedDepartment: { type: String, trim: true, default: '' },
   assignedContact:    { type: String, trim: true, default: '' },

@@ -297,6 +297,21 @@ The project uses npm workspaces.
 npm install
 npm install maplibre-gl
 ```
+"To open mongoose"
+Get-Service MongoDB
+If you see:
+
+Status   Name
+------   ----
+Stopped  MongoDB
+
+start it:
+
+Start-Service MongoDB
+
+Then verify:
+
+Get-Service MongoDB
 
 ### 3. Configure Environment Variables
 

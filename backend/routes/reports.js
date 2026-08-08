@@ -4,6 +4,7 @@ const Notification = require('../models/Notification');
 const User = require('../models/User');
 const Authority = require('../models/Authority');
 const { protect } = require('../middleware/auth');
+const { embedText, bestSemanticMatch, classifyFreeText, looksNepali } = require('../utils/civicAI');
 
 const router = express.Router();
 
@@ -23,6 +24,11 @@ const REPORT_AUTHORITIES = [
   'Water Supply & Sewerage Corporation', 'Urban Development Dept', 'Electricity Authority',
 ];
 
+// Citizens can reopen a "completed" report within this many days if it
+// wasn't actually fixed — long enough to notice, short enough that the
+// work item doesn't stay contestable forever.
+const REOPEN_WINDOW_DAYS = 7;
+
 function estimateDays(category, severity) {
   const spec = REPORT_CATEGORIES.find(c => c.value === category) || REPORT_CATEGORIES[REPORT_CATEGORIES.length - 1];
   const factor = { critical: 0.5, high: 0.75, medium: 1, low: 1.3 }[severity] ?? 1;
@@ -41,14 +47,29 @@ function serializeReport(report, viewerId) {
   const upvotes = (obj.upvotes || []).map(String);
   return { ...obj, upvoteCount: upvotes.length, hasUpvoted: viewerId ? upvotes.includes(String(viewerId)) : false };
 }
-async function findDuplicateCandidate(category, location) {
+
+// Two reports are "the same problem" when they share a category, sit in the
+// same district, and were filed recently. Within that pool, prefer a
+// semantic match (Gemini embeddings on address+description) when both sides
+// have one computed; fall back to plain word-overlap on the address for any
+// candidate that predates AI enrichment (or when Gemini isn't configured),
+// so dedup keeps working exactly as before either way.
+async function findDuplicateCandidate(category, location, description, newEmbedding) {
   const cutoff = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000);
   const candidates = await IncidentReport.find({
     category, duplicateOf: null, status: { $nin: ['completed', 'rejected'] },
     'location.district': new RegExp(`^${(location.district || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
     createdAt: { $gt: cutoff },
   });
-  return candidates.find(r => textOverlap(r.location.address, location.address) >= 0.4) || null;
+
+  const withEmbedding = candidates.filter(c => Array.isArray(c.embedding) && c.embedding.length);
+  const semanticMatch = newEmbedding ? bestSemanticMatch(newEmbedding, withEmbedding) : null;
+  if (semanticMatch) return semanticMatch;
+
+  // Fall back to word-overlap, but only against candidates that couldn't be
+  // compared semantically (either side missing an embedding).
+  const remaining = candidates.filter(c => !withEmbedding.includes(c));
+  return remaining.find(r => textOverlap(r.location.address, location.address) >= 0.4) || null;
 }
 async function notifyRoles(roles, payload) {
   const recipients = await User.find({ role: { $in: roles } }).select('_id');
@@ -104,21 +125,31 @@ router.get('/', protect, async (req, res) => {
 router.post('/', protect, async (req, res) => {
   try {
     if (req.user.role !== 'researcher') return res.status(403).json({ error: 'Only researchers can submit a community report' });
-    const { title, category, description, severity, location, reporterContact, photo, photoName, photos, photoNames } = req.body;
+    const { title, category, description, severity, location, reporterContact, photo, photoName } = req.body;
     const spec = REPORT_CATEGORIES.find(c => c.value === category);
     if (!spec) return res.status(422).json({ error: 'Unknown category' });
-    if (!title || !description) return res.status(422).json({ error: 'Title and description are required' });
+    if (!title || !description || !location?.address) return res.status(422).json({ error: 'Title, description and address are required' });
     if (!reporterContact || !reporterContact.trim()) return res.status(422).json({ error: 'A contact number is required so authorities can reach you about this report' });
-    if (location?.lat == null || location?.lng == null) return res.status(422).json({ error: 'Please select a location on the map - it is required to submit a report' });
-    const photoList = Array.isArray(photos) ? photos.slice(0, 5) : (photo ? [photo] : []);
-    const photoNameList = Array.isArray(photoNames) ? photoNames.slice(0, 5) : (photoName ? [photoName] : []);
-    if (photoList.some(p => p && p.length > 7 * 1024 * 1024)) return res.status(422).json({ error: 'Each photo must be under 5MB' });
+    if (location?.lat == null || location?.lng == null) return res.status(422).json({ error: 'Please pin your live location - it is required to submit a report' });
+    if (photo && photo.length > 7 * 1024 * 1024) return res.status(422).json({ error: 'Photo is too large - max 5MB' });
 
-    const dup = await findDuplicateCandidate(category, location);
+    // AI enrichment, best-effort: translate a Nepali description to English
+    // for staff, and embed the address+description so future reports can be
+    // matched to this one semantically, not just by shared words.
+    const cleanDescription = description.trim();
+    const [translation, embedding] = await Promise.all([
+      looksNepali(cleanDescription) ? classifyFreeText(cleanDescription) : null,
+      embedText(`${location.address} — ${cleanDescription}`),
+    ]);
+
+    const dup = await findDuplicateCandidate(category, location, cleanDescription, embedding);
     const days = estimateDays(category, severity);
     const report = await IncidentReport.create({
-      title: title.trim(), category, description: description.trim(), severity: severity || 'medium', location, reporterContact,
-      photo: photoList[0] || '', photoName: photoNameList[0] || '', photos: photoList, photoNames: photoNameList, upvotes: [req.user._id], comments: [], reportedBy: req.user._id,
+      title: title.trim(), category, description: cleanDescription, severity: severity || 'medium', location, reporterContact,
+      photo: photo || '', photoName: photoName || '', upvotes: [req.user._id], comments: [], reportedBy: req.user._id,
+      embedding: embedding || undefined,
+      language: translation?.language || (looksNepali(cleanDescription) ? 'ne' : 'en'),
+      translatedDescription: translation?.translatedText || '',
       status: dup ? 'duplicate' : 'pending', estimatedDays: dup ? dup.estimatedDays : days, dueDate: dup ? dup.dueDate : addDays(days),
       assignedDepartment: dup ? dup.assignedDepartment : '', assignedContact: dup ? dup.assignedContact : '', duplicateOf: dup ? dup._id : null,
       timeline: [{ action: dup ? 'reported (matched to existing issue)' : 'reported', note: dup ? `Linked to an existing report: "${dup.title}"` : `AI-suggested resolution window: ${days} day(s)`, by: req.user._id }],
@@ -162,6 +193,42 @@ router.post('/:id/comments', protect, async (req, res) => {
       await Notification.create({ user: reporterId, type: 'comment', title: 'New comment on your report', message: `Someone commented on "${report.title}"`, link: `/issues/${report._id}`, report: report._id });
     }
     res.status(201).json({ report: serializeReport(report, req.user._id) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Lets the original reporter — or staff, on their behalf — reopen a report
+// that was marked complete but the underlying problem wasn't actually
+// fixed. Limited to a short window after completion so old, genuinely
+// resolved work can't be reopened indefinitely.
+router.post('/:id/reopen', protect, async (req, res) => {
+  try {
+    const report = await IncidentReport.findById(req.params.id);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    const isOwner = String(report.reportedBy) === String(req.user._id);
+    const isStaff = ['admin', 'analyst', 'ward_rep'].includes(req.user.role);
+    if (!isOwner && !isStaff) return res.status(403).json({ error: 'Only the reporter or staff can reopen this report' });
+    if (report.status !== 'completed') return res.status(422).json({ error: 'Only a completed report can be reopened' });
+
+    const deadline = report.completedAt ? new Date(report.completedAt.getTime() + REOPEN_WINDOW_DAYS * 24 * 60 * 60 * 1000) : null;
+    if (deadline && Date.now() > deadline.getTime()) {
+      return res.status(422).json({ error: `The ${REOPEN_WINDOW_DAYS}-day window to reopen this report has passed` });
+    }
+
+    const reason = (req.body?.reason || '').trim();
+    if (!reason) return res.status(422).json({ error: 'Tell us what still needs fixing' });
+
+    report.status = 'pending';
+    report.reopenCount = (report.reopenCount || 0) + 1;
+    report.reopenedAt = new Date();
+    report.timeline.push({ action: 'reopened', note: reason, by: req.user._id });
+    await report.save();
+
+    await notifyRoles(['admin', 'analyst'], {
+      type: 'reopened', title: 'A resolved report was reopened',
+      message: `"${report.title}" was reopened: ${reason}`, link: `/issues/${report._id}`, report: report._id,
+    });
+    res.json({ report: serializeReport(report, req.user._id) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -211,8 +278,10 @@ router.patch('/:id', protect, async (req, res) => {
       report.timeline.push({ action: 'in-progress', note: payload.note || 'Work has started on site', by: req.user._id });
       await notifyReporters(report, { type: 'eta-updated', title: 'Work has started', message: `Crews have started work on "${report.title}".` });
     } else if (action === 'complete') {
+      if (payload.resolutionPhoto && payload.resolutionPhoto.length > 7 * 1024 * 1024) return res.status(422).json({ error: 'Proof photo is too large - max 5MB' });
       report.status = 'completed';
       report.completedAt = new Date();
+      if (payload.resolutionPhoto) { report.resolutionPhoto = payload.resolutionPhoto; report.resolutionPhotoName = payload.resolutionPhotoName || ''; }
       report.timeline.push({ action: 'completed', note: payload.note || 'Marked complete by analyst', by: req.user._id });
       await notifyReporters(report, { type: 'completed', title: 'Issue resolved', message: `Good news - "${report.title}" has been marked complete.` });
       await notifyRoles(['admin'], { type: 'completed', title: 'Report closed', message: `${req.user.name} closed "${report.title}".`, link: `/issues/${report._id}`, report: report._id });

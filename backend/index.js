@@ -17,6 +17,7 @@ const wardRoutes = require('./routes/wards');
 const smsRoutes = require('./routes/sms');
 const Authority = require('./models/Authority');
 const { parseInboundSms, helpText, sendSms, normalizePhone, VALID_CATEGORIES } = require('./utils/sms');
+const { classifyFreeText } = require('./utils/civicAI');
 const { code, hashCode, expires, validHash, welcomeEmail, otpEmail, resetEmail } = require('./utils/authEmails');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'govinsight-nepal-jwt-secret';
@@ -349,9 +350,9 @@ app.get('/api/reports', protect, (req, res) => {
   res.json({ reports: store.listReports(req.user, req.query) });
 });
 
-app.post('/api/reports', protect, (req, res) => {
+app.post('/api/reports', protect, async (req, res) => {
   if (req.user.role !== 'researcher') return res.status(403).json({ error: 'Only researchers can submit a community report' });
-  const result = store.createReport(req.user._id, req.body || {});
+  const result = await store.createReport(req.user._id, req.body || {});
   if (result.error) return res.status(422).json({ error: result.error });
   res.status(201).json(result);
 });
@@ -368,6 +369,16 @@ app.get('/api/reports/:id', protect, (req, res) => {
 app.patch('/api/reports/:id', protect, (req, res) => {
   const { action, ...payload } = req.body || {};
   const result = store.updateReport(req.params.id, req.user, action, payload);
+  if (result.error) return res.status(422).json({ error: result.error });
+  res.json(result);
+});
+
+// Lets the original reporter (or staff) reopen a report that was marked
+// complete but wasn't actually fixed, within a short window after
+// completion. Separate from the staff-only PATCH above since a citizen
+// reporter needs to be able to call it too.
+app.post('/api/reports/:id/reopen', protect, (req, res) => {
+  const result = store.reopenReport(req.params.id, req.user, req.body?.reason);
   if (result.error) return res.status(422).json({ error: result.error });
   res.json(result);
 });
@@ -395,7 +406,15 @@ app.post('/api/sms/inbound', async (req, res) => {
         ? `Report "${report.title}" â€” status: ${report.status}${report.assignedDepartment ? ` (${report.assignedDepartment})` : ''}. ID: ${report._id.slice(-6)}`
         : "No matching report found. Text your report ID, or REPORT to file a new one.";
     } else if (cmd.type === 'report') {
-      if (!cmd.category) {
+      let category = cmd.category;
+      let aiNote = '';
+      if (!category && cmd.description) {
+        // No recognized category keyword — ask Gemini to classify the free
+        // text instead of immediately rejecting the report.
+        const guess = await classifyFreeText(cmd.description);
+        if (guess.category) { category = guess.category; aiNote = ' (AI-classified from your message)'; }
+      }
+      if (!category) {
         reply = `Category not recognized. Valid categories: ${VALID_CATEGORIES.join(', ')}`;
       } else {
         let smsUser = store.findUserByPhone(phone);
@@ -405,10 +424,10 @@ app.post('/api/sms/inbound', async (req, res) => {
           // password/email â€” this account can only be used via SMS.
           smsUser = store.createSmsUser(phone);
         }
-        const result = store.createReport(smsUser._id, {
-          title: cmd.description.slice(0, 80) || `${cmd.category} report`,
-          category: cmd.category,
-          description: cmd.description || cmd.category,
+        const result = await store.createReport(smsUser._id, {
+          title: cmd.description.slice(0, 80) || `${category} report`,
+          category,
+          description: cmd.description || category,
           severity: 'medium',
           location: { address: cmd.district || 'Unspecified (via SMS)', district: cmd.district || '' },
           reporterContact: phone,
@@ -416,7 +435,7 @@ app.post('/api/sms/inbound', async (req, res) => {
         });
         reply = result.error
           ? `Could not file report: ${result.error}`
-          : `Report received. ID: ${result.report._id.slice(-6)}. Text STATUS ${result.report._id.slice(-6)} to check progress.`;
+          : `Report received${aiNote}. ID: ${result.report._id.slice(-6)}. Text STATUS ${result.report._id.slice(-6)} to check progress.`;
       }
     } else {
       reply = `Unrecognized message. Text HELP for commands.\n${helpText()}`;
