@@ -18,7 +18,7 @@ const userSchema = new mongoose.Schema({
 
   // Phone number, normalized to digits only (e.g. "9779812345678").
   // Used to identify citizens reporting issues over SMS, since a text
-  // message can't carry a JWT â€” the phone number is the identity.
+  // message can't carry a JWT — the phone number is the identity.
   phone:        { type: String, default: '', trim: true },
 
   // Identity verification (required at signup for researcher/citizen accounts).
@@ -73,4 +73,3 @@ userSchema.methods.toPublic = function () {
 };
 
 module.exports = mongoose.model('User', userSchema);
-

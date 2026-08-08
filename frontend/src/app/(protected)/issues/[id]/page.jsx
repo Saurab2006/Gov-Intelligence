@@ -19,7 +19,7 @@ function fileToDataUrl(file) {
   });
 }
 
-// Mirrors the server's REOPEN_WINDOW_DAYS â€” purely for showing/hiding the
+// Mirrors the server's REOPEN_WINDOW_DAYS — purely for showing/hiding the
 // Reopen button client-side; the server enforces the real deadline.
 const REOPEN_WINDOW_DAYS = 7;
 
@@ -150,7 +150,7 @@ export default function ReportDetailPage() {
   };
 
   const confirmComplete = async () => {
-    await act('complete', { note: completeNote, resolutionPhoto, resolutionPhotoName }, 'Marked complete â€” reporters notified');
+    await act('complete', { note: completeNote, resolutionPhoto, resolutionPhotoName }, 'Marked complete — reporters notified');
     setShowCompleteBox(false); setCompleteNote(''); setResolutionPhoto(''); setResolutionPhotoName('');
   };
 
@@ -222,7 +222,7 @@ export default function ReportDetailPage() {
         )}
 
         <div className="flex flex-wrap gap-2 pt-1">
-          <InfoPill icon={Clock} label={report.status === 'completed' ? `Resolved ${relativeTime(report.completedAt)}` : `AI estimate: ${report.estimatedDays} day(s) â€” due ${new Date(report.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`} />
+          <InfoPill icon={Clock} label={report.status === 'completed' ? `Resolved ${relativeTime(report.completedAt)}` : `AI estimate: ${report.estimatedDays} day(s) — due ${new Date(report.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`} />
           {report.confirmations > 1 && <InfoPill icon={Copy} label={`${report.confirmations} citizens reported this issue`} />}
           {report.assignedDepartment && <InfoPill icon={UserCheck} label={`Assigned to ${report.assignedDepartment}${report.assignedContact ? ` Â· ${report.assignedContact}` : ''}`} />}
         </div>
@@ -294,7 +294,7 @@ export default function ReportDetailPage() {
               <input value={completeNote} onChange={e => setCompleteNote(e.target.value)} placeholder="Optional note about how it was resolved" className="w-full h-9 px-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-brand-500" />
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-1.5 h-9 px-3 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 cursor-pointer">
-                  <Camera className="w-3.5 h-3.5" />{photoBusy ? 'Reading photoâ€¦' : resolutionPhotoName || 'Attach proof photo (optional)'}
+                  <Camera className="w-3.5 h-3.5" />{photoBusy ? 'Reading photo…' : resolutionPhotoName || 'Attach proof photo (optional)'}
                   <input type="file" accept="image/*" className="hidden" onChange={handleResolutionPhoto} disabled={photoBusy} />
                 </label>
                 {resolutionPhoto && <button type="button" onClick={() => { setResolutionPhoto(''); setResolutionPhotoName(''); }} className="text-xs text-gray-400 hover:text-gray-600">Remove</button>}
@@ -342,7 +342,7 @@ export default function ReportDetailPage() {
           <div className="space-y-2">
             {report.duplicates.map(d => (
               <div key={d._id} className="flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2">
-                <span className="text-gray-600">{d.reportedBy?.name || 'Citizen'} â€” {relativeTime(d.createdAt)}</span>
+                <span className="text-gray-600">{d.reportedBy?.name || 'Citizen'} — {relativeTime(d.createdAt)}</span>
                 <span className="text-gray-400">{d.location.address}</span>
               </div>
             ))}
@@ -357,7 +357,7 @@ export default function ReportDetailPage() {
             <div key={i} className="flex gap-3">
               <div className="w-6 h-6 rounded-full bg-brand-50 border border-brand-100 flex items-center justify-center shrink-0 mt-0.5"><div className="w-1.5 h-1.5 rounded-full bg-brand-500" /></div>
               <div>
-                <p className="text-xs font-semibold text-gray-800 capitalize">{t.action.replace(/-/g, ' ')}{t.by ? ` â€” ${t.by.name}` : ''}</p>
+                <p className="text-xs font-semibold text-gray-800 capitalize">{t.action.replace(/-/g, ' ')}{t.by ? ` — ${t.by.name}` : ''}</p>
                 {t.note && <p className="text-xs text-gray-500 mt-0.5">{t.note}</p>}
                 <p className="text-[10px] text-gray-400 mt-0.5">{relativeTime(t.at)}</p>
               </div>
@@ -392,7 +392,7 @@ function IdDocModal({ userId, userName, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
-          <h3 className="text-sm font-semibold text-gray-900">Identity document â€” {userName}</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Identity document — {userName}</h3>
         </div>
         <div className="p-5">
           {loading ? (
@@ -400,7 +400,7 @@ function IdDocModal({ userId, userName, onClose }) {
           ) : error ? (
             <p className="text-sm text-gray-500">{error}</p>
           ) : isPdf ? (
-            <a href={doc.citizenshipDoc} target="_blank" rel="noreferrer" className="text-sm text-brand-600 font-medium underline">Open PDF â€” {doc.citizenshipDocName}</a>
+            <a href={doc.citizenshipDoc} target="_blank" rel="noreferrer" className="text-sm text-brand-600 font-medium underline">Open PDF — {doc.citizenshipDocName}</a>
           ) : (
             <img src={doc.citizenshipDoc} alt="Citizenship document" className="w-full rounded-xl border border-gray-100" />
           )}
@@ -499,7 +499,7 @@ function MapCard({ location }) {
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
-          No GPS coordinates were pinned for this report â€” only the written address is available.
+          No GPS coordinates were pinned for this report — only the written address is available.
         </div>
       )}
     </div>
@@ -512,7 +512,7 @@ function ReviewsCard({ authority, authorityName, reportId, reviews, onChanged })
   const [submitting, setSubmitting] = useState(false);
 
   const submitReview = async () => {
-    if (!authority) { toast.error('This authority isn\'t registered yet â€” ask an admin to add it'); return; }
+    if (!authority) { toast.error('This authority isn\'t registered yet — ask an admin to add it'); return; }
     setSubmitting(true);
     try {
       await post(`/api/authorities/${authority._id}/reviews`, { rating, comment, report: reportId });
@@ -526,7 +526,7 @@ function ReviewsCard({ authority, authorityName, reportId, reviews, onChanged })
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">Reviews â€” {authorityName}</h3>
+        <h3 className="text-sm font-semibold text-gray-900">Reviews — {authorityName}</h3>
         {authority && (
           <span className="flex items-center gap-1 text-xs font-semibold text-amber-600">
             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />{authority.ratingAvg?.toFixed(1) || '0.0'}
@@ -551,7 +551,7 @@ function ReviewsCard({ authority, authorityName, reportId, reviews, onChanged })
 
       <div className="space-y-3 pt-2 border-t border-gray-50">
         {reviews.length === 0 ? (
-          <p className="text-xs text-gray-400">No reviews yet â€” be the first to rate this authority.</p>
+          <p className="text-xs text-gray-400">No reviews yet — be the first to rate this authority.</p>
         ) : reviews.map(r => (
           <div key={r._id} className="flex items-start justify-between gap-3 text-xs">
             <div>

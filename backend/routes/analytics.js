@@ -24,7 +24,7 @@ router.get('/', protect, async (req, res) => {
 
     const totalBudget = docs.reduce((a, d) => a + (d.totalBudget || 0), 0);
     const deptSet = new Set(budgets.map(b => b.department));
-    const latestFy = docs.length ? docs.sort((a, b) => b.fiscalYear?.localeCompare(a.fiscalYear))[0].fiscalYear : 'â€”';
+    const latestFy = docs.length ? docs.sort((a, b) => b.fiscalYear?.localeCompare(a.fiscalYear))[0].fiscalYear : '—';
 
     // Sector breakdown
     const sectorMap = {};
@@ -78,4 +78,3 @@ router.get('/', protect, async (req, res) => {
 });
 
 module.exports = router;
-

@@ -7,7 +7,7 @@ const { accountDecisionEmail } = require('../utils/authEmails');
 
 const router = express.Router();
 
-// GET /api/users â€” admin only
+// GET /api/users — admin only
 router.get('/', protect, requireRole('admin'), async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
@@ -21,7 +21,7 @@ router.get('/', protect, requireRole('admin'), async (req, res) => {
   }
 });
 
-// PATCH /api/users/:id â€” admin only
+// PATCH /api/users/:id — admin only
 router.patch('/:id', protect, requireRole('admin'), async (req, res) => {
   try {
     const { role, status, verificationStatus, wardRepresentativeStatus } = req.body;
@@ -50,7 +50,7 @@ router.patch('/:id', protect, requireRole('admin'), async (req, res) => {
   }
 });
 
-// GET /api/users/:id/citizenship-doc â€” admin/analyst only. Lets staff verify
+// GET /api/users/:id/citizenship-doc — admin/analyst only. Lets staff verify
 // a citizen's identity, e.g. before/after flagging one of their reports as fake.
 router.get('/:id/citizenship-doc', protect, requireRole('admin', 'analyst'), async (req, res) => {
   try {
@@ -64,6 +64,3 @@ router.get('/:id/citizenship-doc', protect, requireRole('admin', 'analyst'), asy
 });
 
 module.exports = router;
-
-
-

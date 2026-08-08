@@ -11,7 +11,7 @@ const VERIFICATION_STYLE = {
   verified: { label: 'Verified', icon: ShieldCheck, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
   pending: { label: 'Pending review', icon: ShieldQuestion, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
   rejected: { label: 'Rejected', icon: ShieldAlert, cls: 'bg-red-50 text-red-700 border-red-100' },
-  'n/a': { label: 'â€”', icon: null, cls: 'bg-gray-50 text-gray-400 border-gray-100' },
+  'n/a': { label: '—', icon: null, cls: 'bg-gray-50 text-gray-400 border-gray-100' },
 };
 
 export default function UsersPage() {
@@ -100,7 +100,7 @@ function CitizenshipDocModal({ user, onClose, onVerify }) {
       <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Identity document â€” {user.name}</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Identity document — {user.name}</h3>
             <p className="text-xs text-gray-400 mt-0.5">Used to verify this citizen, e.g. before flagging a report as fake</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50"><X className="w-4 h-4" /></button>
@@ -111,7 +111,7 @@ function CitizenshipDocModal({ user, onClose, onVerify }) {
           ) : error ? (
             <p className="text-sm text-gray-500">{error}</p>
           ) : isPdf ? (
-            <a href={doc.citizenshipDoc} target="_blank" rel="noreferrer" className="text-sm text-brand-600 font-medium underline">Open PDF â€” {doc.citizenshipDocName}</a>
+            <a href={doc.citizenshipDoc} target="_blank" rel="noreferrer" className="text-sm text-brand-600 font-medium underline">Open PDF — {doc.citizenshipDocName}</a>
           ) : (
             <img src={doc.citizenshipDoc} alt="Citizenship document" className="w-full rounded-xl border border-gray-100" />
           )}
