@@ -1,177 +1,522 @@
-# Civicदृष्टि
+# Civicदृष्टि ꔪ
 
-Civicदृष्टि ("Civic Vision") is a civic transparency and accountability platform for Nepal, built with Next.js, Express, MongoDB, and Mongoose. It combines two things in one app:
+> **Civic Vision — A Digital Platform for Transparency, Accountability, and Citizen Participation in Nepal**
 
-1. **Public budget transparency** — browse government budget records, analyze spending by sector/department/district/fiscal year, and propose or approve data changes.
-2. **Civic issue reporting** — citizens report local problems (potholes, floods, drainage, electrical hazards, etc.), the community verifies them, the right authority takes ownership, and the outcome stays on record.
+Civicदृष्टि is a civic transparency and accountability platform designed to connect **citizens, local authorities, ward representatives, analysts, and administrators** through a single digital platform.
 
-The interface is bilingual (English / नेपाली) and adapts by role — citizens, local body staff, ward representatives, and admins each see a dashboard scoped to what they're responsible for.
+The system combines **public budget transparency** with **civic issue reporting**, enabling citizens to understand how public resources are used, report problems in their communities, and track those issues from reporting to resolution.
 
-## Main Features
+Built with **Next.js, Express.js, MongoDB, and Mongoose**, Civicदृष्टि provides a modern, bilingual, role-based platform designed around transparency and responsible governance.
 
-- **Civic issue chain** — report → verify → assign → resolve, with photo upload, duplicate detection, severity/status tracking, upvotes, and comments.
-- **Budget explorer** — search and filter budget line items by sector, department, district, and fiscal year; view spend trends and department load.
-- **Authorities & departments** — see which office owns which category of work, and their track record.
-- **AI briefs** — plain-language summaries of budget and civic-issue trends.
-- **Notices & notifications** — admins can broadcast an important notice (banner + email) to all users or a specific role; everyone gets in-app notifications for report status changes.
-- **Ward representatives** — a scoped role limited to issues and budget items inside their approved ward, subject to admin approval on signup.
-- **Bilingual UI** — every core page switches between English and Nepali from a single toggle.
-- **Role-based data changes** — analysts propose edits, admins approve or reject them before they become official.
+---
 
-## User Roles
+## 📌 Overview
 
-### Admin
-- Manage users, roles, and ward representative applications.
-- View all dashboards and reports.
-- Review and approve/reject pending budget change requests.
-- Broadcast important notices to the whole app or a specific role.
+Civicदृष्टि brings two important aspects of civic engagement together:
 
-### Analyst (Local Body Staff)
-- View dashboards, analytics, budget records, departments, and civic issues.
-- Verify, assign, and update the status of citizen reports.
-- Propose edits to budget line items; cannot apply them without admin approval.
+### 💰 Public Budget Transparency
 
-### Researcher (Citizen)
-- Report civic issues with location, category, severity, and an optional photo.
-- Upvote and comment on existing reports.
-- View and analyze public budget data, reports, and dashboards.
-- Cannot propose, edit, approve, or manage users.
+Citizens can explore government budget information by:
 
-### Ward Representative
-- Same as Researcher, scoped to a specific ward.
-- Can additionally handle issue and budget work inside that ward once an admin approves their application.
+* Sector
+* Department
+* District
+* Fiscal year
+* Spending trends
+* Department workload
 
-## Data Change Rule
+Analysts can propose corrections or updates to budget records, while administrators review and approve those changes before they become official.
+
+### 🚨 Civic Issue Reporting
+
+Citizens can report local problems such as:
+
+* 🛣️ Potholes and damaged roads
+* 🌊 Flooding
+* 🚰 Drainage problems
+* ⚡ Electrical hazards
+* 🏙️ Other local infrastructure issues
+
+Each issue follows a structured workflow:
+
+**Report → Verify → Assign → Resolve**
+
+This creates a transparent record of how civic problems are handled.
+
+---
+
+## ✨ Key Features
+
+### 🚨 Civic Issue Management
+
+* Report civic issues with location and category
+* Set issue severity
+* Upload supporting photographs
+* Track issue status
+* Detect potential duplicate reports
+* Community upvotes
+* Comments and discussion
+* Authority assignment
+* Resolution tracking
+* Complete issue history
+
+### 💰 Budget Explorer
+
+* Search public budget records
+* Filter by sector
+* Filter by department
+* Filter by district
+* Filter by fiscal year
+* Analyze spending trends
+* View department workload
+* Propose budget data changes
+* Admin approval workflow
+
+### 🏛️ Authorities & Departments
+
+* View responsible authorities
+* Identify departments responsible for specific issues
+* Track authority responsibilities
+* View performance and historical records
+
+### 🤖 AI-Powered Briefs
+
+Google Gemini provides simplified summaries of complex civic and financial information, helping users understand:
+
+* Budget trends
+* Spending patterns
+* Civic issue trends
+* Department activity
+
+### 📢 Notices & Notifications
+
+Administrators can:
+
+* Publish important notices
+* Display system-wide announcements
+* Target specific user roles
+* Send email notifications
+* Notify users when issue statuses change
+
+### 🏘️ Ward Representatives
+
+Ward Representatives receive access based on their approved ward.
+
+* Submit and manage civic issues within their ward
+* View ward-specific information
+* Work with relevant budget information
+* Participate in civic issue management
+* Require administrator approval before receiving the role
+
+### 🌐 Bilingual Interface
+
+The platform supports:
+
+* 🇬🇧 English
+* 🇳🇵 नेपाली
+
+Users can switch languages through a centralized language toggle.
+
+### 🔐 Role-Based Access Control
+
+Different users receive different permissions based on their responsibilities.
+
+| Role                        | Primary Responsibilities                                           |
+| --------------------------- | ------------------------------------------------------------------ |
+| 👑 **Admin**                | Manage users, approvals, notices, and system-wide data             |
+| 🧑‍💼 **Analyst**           | Verify issues, manage civic data, and propose budget changes       |
+| 👤 **Researcher**           | Report issues, participate in discussions, and explore public data |
+| 🏘️ **Ward Representative** | Handle civic and budget activities within an approved ward         |
+
+---
+
+## 🔄 Data Governance
+
+Civicदृष्टि follows a controlled data-change process to protect the integrity of official information.
 
 ```text
-Citizens report and view data. Analysts verify reports and propose budget edits.
-Admins approve/manage important changes and broadcast notices.
+Citizens
+   │
+   │ Report / View
+   ▼
+Analysts
+   │
+   │ Verify / Propose
+   ▼
+Administrators
+   │
+   │ Approve / Reject
+   ▼
+Official Data
 ```
 
-In practice, for budget edits:
+### 💰 Budget Change Workflow
 
-1. Analyst opens Budget Explorer.
-2. Analyst clicks `Propose edit` on a budget item.
-3. Analyst submits changed fields and a reason.
-4. Admin opens the pending Change Requests queue.
-5. Admin approves or rejects the proposal.
-6. If approved, the official budget item is updated.
+1. Analyst opens **Budget Explorer**
+2. Analyst selects **Propose Edit**
+3. Analyst submits the proposed changes and reason
+4. Administrator reviews the change request
+5. Administrator approves or rejects the request
+6. Approved changes are applied to the official budget record
 
-## Tech Stack
+This ensures that important public data cannot be changed without proper review.
 
-- **Frontend:** Next.js 14 (App Router), React, Tailwind CSS, Recharts, lucide-react
-- **Backend:** Express.js (dual-mode: MongoDB when available, in-memory fallback otherwise)
-- **Database:** MongoDB with Mongoose
-- **Authentication:** JWT + bcryptjs
-- **Email:** Nodemailer (welcome, OTP verification, password reset, notices)
-- **AI:** Google Gemini (plain-language briefs)
+---
 
-## Setup
+## 🏗️ System Architecture
 
-Install dependencies:
+```text
+┌───────────────────────────────────────────┐
+│              Civicदृष्टि 🇳🇵              │
+└─────────────────────┬─────────────────────┘
+                      │
+                      ▼
+┌───────────────────────────────────────────┐
+│          Next.js Frontend                 │
+│      React + Tailwind CSS + Recharts      │
+└─────────────────────┬─────────────────────┘
+                      │
+                  /api/*
+                      │
+                      ▼
+┌───────────────────────────────────────────┐
+│             Express.js API                │
+│      Authentication + Business Logic      │
+└─────────────────────┬─────────────────────┘
+                      │
+              ┌───────┴────────┐
+              ▼                ▼
+       ┌────────────┐    ┌──────────────┐
+       │  MongoDB   │    │ In-Memory    │
+       │  Mongoose  │    │  Fallback    │
+       └────────────┘    └──────────────┘
+              │
+              ▼
+       ┌───────────────┐
+       │ External APIs │
+       │ Gemini / Email│
+       └───────────────┘
+```
+
+---
+
+## 🛠️ Technology Stack
+
+### Frontend
+
+* **Next.js 14** — React framework with App Router
+* **React** — UI development
+* **Tailwind CSS** — Styling and responsive design
+* **Recharts** — Data visualization
+* **Lucide React** — Interface icons
+
+### Backend
+
+* **Node.js**
+* **Express.js**
+* **Mongoose**
+
+### Database
+
+* **MongoDB**
+* MongoDB Compass for database management
+
+### Authentication & Security
+
+* **JWT** — Authentication tokens
+* **bcryptjs** — Password hashing
+* Role-based authorization
+
+### Communication
+
+* **Nodemailer**
+* Email verification
+* OTP verification
+* Password reset
+* Welcome emails
+* System notices
+
+### Artificial Intelligence
+
+* **Google Gemini API**
+* AI-generated civic and budget briefs
+
+---
+
+## 📁 Project Structure
+
+```text
+govinsight-nepal/
+│
+├── backend/
+│   ├── index.js
+│   ├── db.js
+│   ├── memstore.js
+│   ├── middleware/
+│   ├── models/
+│   ├── routes/
+│   ├── utils/
+│   ├── .env
+│   └── package.json
+│
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   ├── next.config.js
+│   ├── tailwind.config.js
+│   └── package.json
+│
+└── package.json
+```
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+Make sure the following are installed:
+
+* **Node.js**
+* **npm**
+* **MongoDB** (optional when using memory mode)
+* **Git**
+
+### 1. Clone the Repository
+
+```bash
+git clone <your-repository-url>
+cd govinsight-nepal
+```
+
+### 2. Install Dependencies
+
+The project uses npm workspaces.
 
 ```bash
 npm install
 ```
 
-Copy the environment template and fill in real values:
+### 3. Configure Environment Variables
 
-```bash
-cp .env.example .env
+Create:
+
+```text
+backend/.env
 ```
 
-`.env` needs:
+Add the required configuration:
 
-| Variable | Purpose |
-|---|---|
-| `PORT` | Express API port (default `5000`) |
-| `MONGODB_URI` | MongoDB connection string — omit or leave unreachable to run in memory mode |
-| `MONGODB_DB` | Database name |
-| `JWT_SECRET` | Any long random string used to sign auth tokens |
-| `GEMINI_API_KEY` | Google Gemini API key, for AI Briefs |
-| `EMAIL_SERVICE` | e.g. `gmail` |
-| `EMAIL_USER` | Sender email address |
-| `EMAIL_PASS` | App password for that email account (not your normal login password) |
+```env
+PORT=5000
 
-Start the app:
+MONGODB_URI=Your URL
+MONGODB_DB=govinsight-nepal
+
+JWT_SECRET=your-long-random-secret
+
+GEMINI_API_KEY=your-gemini-api-key
+
+EMAIL_SERVICE=gmail
+EMAIL_USER=your-email@example.com
+EMAIL_PASS=your-email-app-password
+```
+
+### 4. Start the Application
 
 ```bash
 npm run dev
 ```
 
-Open:
+The application will be available at:
 
 ```text
-http://localhost:3000
+Frontend: http://localhost:3000
+Backend:  http://localhost:5000
 ```
 
-Check API/database status:
+### 5. Check API Health
+
+Open:
 
 ```text
 http://localhost:5000/api/health
 ```
 
-Memory mode is temporary. Data disappears when the server restarts.
+---
 
-## MongoDB Compass
+## 🗄️ MongoDB
 
-Use this connection string:
+For local MongoDB, use:
 
 ```text
 mongodb://127.0.0.1:27017
 ```
 
-After signup/login, refresh Compass and open:
+The application uses the following main collections:
 
 ```text
-govinsight-nepal
+users
+incidentreports
+budgetitems
+changerequests
+authorities
+wardunits
+notices
+notifications
+reviews
+projects
+documents
+activities
 ```
 
-Collections:
+If MongoDB is unavailable, the backend can operate using its **temporary in-memory fallback mode**.
 
-- `users`
-- `incidentreports` — citizen-reported civic issues
-- `budgetitems`
-- `changerequests`
-- `authorities`
-- `wardunits`
-- `notices`
-- `notifications`
-- `reviews`
-- `projects`
-- `documents`
-- `activities`
+> ⚠️ Data stored in memory is lost when the server restarts.
 
-## Useful Scripts
+---
 
-Run development server (frontend + backend together):
+## 📜 Available Scripts
+
+### Development
 
 ```bash
 npm run dev
 ```
 
-Build production app:
+Runs the frontend and backend together.
+
+### Production Build
 
 ```bash
 npm run build
 ```
 
-Run Express server only:
+Builds the application for production.
+
+### Backend Only
 
 ```bash
 npm run server
 ```
 
-Run Next frontend only:
+Starts the Express backend.
+
+### Frontend Only
 
 ```bash
 npm run client
 ```
 
-## Demo accounts
+Starts the Next.js frontend.
 
-Quick demo accounts — the first login attempt with one of these emails auto-creates the account with whatever password you type, so pick a password and remember it for next time:
+---
 
-- `admin@govinsight.np`
-- `analyst@govinsight.np`
-- `researcher@govinsight.np`
+## 🧪 Demo Accounts
+
+For demonstration and testing:
+
+| Role          | Email                      |
+| ------------- | -------------------------- |
+| 👑 Admin      | `admin@govinsight.np`      |
+| 🧑‍💼 Analyst | `analyst@govinsight.np`    |
+| 👤 Researcher | `researcher@govinsight.np` |
+
+The first login attempt with these demo emails automatically creates the corresponding account using the password entered during login.
+
+> 🔐 Use a test password during development and never use sensitive production credentials.
+
+---
+
+## 🔐 Security Considerations
+
+Civicदृष्टि handles authentication and role-based access to civic and government-related information.
+
+The application uses:
+
+* JWT-based authentication
+* Password hashing with bcrypt
+* Role-based authorization
+* Admin approval for sensitive actions
+* Controlled budget data modification
+* Environment variables for secrets
+
+For production deployment, additional security measures should be implemented, including:
+
+* HTTPS
+* Secure cookie/token configuration
+* Rate limiting
+* Input validation
+* Request sanitization
+* Production-grade logging
+* Secure file upload validation
+* Proper secret management
+
+---
+
+## 🎯 Project Goals
+
+Civicदृष्टि aims to make civic information more:
+
+**Accessible** → Citizens can easily understand public information.
+
+**Transparent** → Government budgets and civic activities remain visible.
+
+**Participatory** → Citizens can report and discuss local problems.
+
+**Accountable** → Issues have a clear ownership and resolution trail.
+
+**Data-driven** → Analytics and AI help users understand trends.
+
+**Inclusive** → Bilingual support makes the platform more accessible across Nepal.
+
+---
+
+## 🇳🇵 Vision
+
+> **To build a more transparent, accountable, and participatory Nepal through technology.**
+
+Civicदृष्टि envisions a future where citizens can easily understand how public resources are used, report problems in their communities, identify responsible authorities, and track whether those problems are actually resolved.
+
+---
+
+## 👥 User Flow
+
+```text
+                    🇳🇵 Citizen
+                        │
+              ┌─────────┴─────────┐
+              ▼                   ▼
+        💰 Explore Budget    🚨 Report Issue
+              │                   │
+              │                   ▼
+              │              🔍 Verification
+              │                   │
+              │                   ▼
+              │              🏢 Assignment
+              │                   │
+              │                   ▼
+              │              ✅ Resolution
+              │
+              ▼
+       📊 Public Transparency
+              │
+              └──────────────┐
+                             ▼
+                    🤝 Civic Participation
+                             │
+                             ▼
+                       ⚖️ Accountability
+```
+
+---
+
+## 📄 License
+
+This project is developed for SEP (Software Engineering Project) 💻.
+
+---
+
+## 💡 Civicदृष्टि ꔪ
+
+**See the budget. Report the problem. Track the action. Build a better Nepal.**
