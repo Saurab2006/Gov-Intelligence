@@ -498,7 +498,7 @@ const store = {
     notices.unshift(notice);
     const targets = users.filter(u => audience === 'all' || u.role === audience);
     targets.forEach(u => {
-      store.createNotification(u._id, 'important-notice', title, message, '/dashboard');
+      store.createNotification(u._id, { type: 'important-notice', title, message, link: '/dashboard' });
       sendEmailQuietly({ to: u.email, subject: `Important notice: ${title}`, text: `Namaste ${u.name},\n\n${message}\n\nOpen Civicदृष्टि to see the notice.` });
     });
     return { notice, emailed: targets.length };
@@ -829,19 +829,3 @@ const store = {
 };
 
 module.exports = store;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

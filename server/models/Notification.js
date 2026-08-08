@@ -3,7 +3,7 @@ const { sendEmailQuietly } = require('../utils/email');
 
 const notificationSchema = new mongoose.Schema({
   user:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  type:    { type: String, required: true, enum: ['new-report', 'assigned', 'eta-updated', 'verified', 'completed', 'flagged-fake', 'duplicate', 'comment', 'budget-flagged'] },
+  type:    { type: String, required: true, enum: ['new-report', 'assigned', 'eta-updated', 'verified', 'completed', 'flagged-fake', 'duplicate', 'comment', 'budget-flagged', 'important-notice'] },
   title:   { type: String, required: true, trim: true },
   message: { type: String, required: true, trim: true },
   link:    { type: String, default: '' },
@@ -31,4 +31,3 @@ notificationSchema.post('save', function (doc) { emailForNotification(doc); });
 notificationSchema.post('insertMany', function (docs) { (docs || []).forEach(emailForNotification); });
 
 module.exports = mongoose.model('Notification', notificationSchema);
-

@@ -26,7 +26,7 @@ export default function ProtectedLayout({ children }) {
   if (!user) return null;
 
   return (
-    <div className="flex min-h-screen bg-[#f5f1e8]">
+    <div className="flex min-h-screen bg-[#faf9f5]">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />

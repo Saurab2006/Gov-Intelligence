@@ -87,8 +87,6 @@ router.post('/login', async (req, res) => {
     }
     if (user.status !== 'active') return res.status(403).json({ error: 'Account suspended' });
 
-    welcomeEmail(user);
-    otpEmail(user, otp);
     const token = signToken(user);
     await seedForUser(user._id);
     res.json({ user: user.toPublic(), token });
@@ -164,8 +162,3 @@ router.get('/me', protect, (req, res) => {
 });
 
 module.exports = router;
-
-
-
-
-

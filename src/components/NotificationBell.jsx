@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, CheckCheck, AlertTriangle, UserCheck, Clock, PartyPopper, Copy, ShieldAlert } from 'lucide-react';
+import { Bell, CheckCheck, AlertTriangle, UserCheck, Clock, PartyPopper, Copy, ShieldAlert, Megaphone } from 'lucide-react';
 import { get, patch } from '@/lib/api';
 import { relativeTime, cn } from '@/lib/format';
 
@@ -13,6 +13,7 @@ const ICONS = {
   completed: PartyPopper,
   duplicate: Copy,
   'flagged-fake': ShieldAlert,
+  'important-notice': Megaphone,
 };
 
 export default function NotificationBell() {
