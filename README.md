@@ -1,62 +1,70 @@
 # Civicदृष्टि
 
-Civicदृष्टि is a government budget analysis web app built with Next.js, Express, MongoDB, and Mongoose. It helps users view budget records, analyze spending, compare departments, and manage approved data changes through role-based access.
+Civicदृष्टि ("Civic Vision") is a civic transparency and accountability platform for Nepal, built with Next.js, Express, MongoDB, and Mongoose. It combines two things in one app:
 
-## Main Benefits
+1. **Public budget transparency** — browse government budget records, analyze spending by sector/department/district/fiscal year, and propose or approve data changes.
+2. **Civic issue reporting** — citizens report local problems (potholes, floods, drainage, electrical hazards, etc.), the community verifies them, the right authority takes ownership, and the outcome stays on record.
 
-- View government budget data in a dashboard.
-- Analyze spending by sector, department, district, and fiscal year.
-- Search and filter budget line items.
-- Store data permanently in MongoDB.
-- Control access with Admin, Analyst, and Researcher roles.
-- Let analysts propose edits while admins approve important changes.
+The interface is bilingual (English / नेपाली) and adapts by role — citizens, local body staff, ward representatives, and admins each see a dashboard scoped to what they're responsible for.
+
+## Main Features
+
+- **Civic issue chain** — report → verify → assign → resolve, with photo upload, duplicate detection, severity/status tracking, upvotes, and comments.
+- **Budget explorer** — search and filter budget line items by sector, department, district, and fiscal year; view spend trends and department load.
+- **Authorities & departments** — see which office owns which category of work, and their track record.
+- **AI briefs** — plain-language summaries of budget and civic-issue trends.
+- **Notices & notifications** — admins can broadcast an important notice (banner + email) to all users or a specific role; everyone gets in-app notifications for report status changes.
+- **Ward representatives** — a scoped role limited to issues and budget items inside their approved ward, subject to admin approval on signup.
+- **Bilingual UI** — every core page switches between English and Nepali from a single toggle.
+- **Role-based data changes** — analysts propose edits, admins approve or reject them before they become official.
 
 ## User Roles
 
 ### Admin
-
-- Manage users and roles.
+- Manage users, roles, and ward representative applications.
 - View all dashboards and reports.
-- Review pending budget change requests.
-- Approve or reject proposed data changes.
+- Review and approve/reject pending budget change requests.
+- Broadcast important notices to the whole app or a specific role.
 
-### Analyst
+### Analyst (Local Body Staff)
+- View dashboards, analytics, budget records, departments, and civic issues.
+- Verify, assign, and update the status of citizen reports.
+- Propose edits to budget line items; cannot apply them without admin approval.
 
-- View dashboards, analytics, budget records, departments, and reports.
-- Select a budget line and submit a proposed edit.
-- Track pending proposals.
-- Cannot directly change official data without admin approval.
-
-### Researcher
-
-- View and analyze budget data.
-- Use dashboards, reports, filters, and search.
+### Researcher (Citizen)
+- Report civic issues with location, category, severity, and an optional photo.
+- Upvote and comment on existing reports.
+- View and analyze public budget data, reports, and dashboards.
 - Cannot propose, edit, approve, or manage users.
+
+### Ward Representative
+- Same as Researcher, scoped to a specific ward.
+- Can additionally handle issue and budget work inside that ward once an admin approves their application.
 
 ## Data Change Rule
 
-Best rule used in this app:
-
 ```text
-Normal users can view data, analysts can propose or edit data, and admins approve/manage important changes.
+Citizens report and view data. Analysts verify reports and propose budget edits.
+Admins approve/manage important changes and broadcast notices.
 ```
 
-In practice:
+In practice, for budget edits:
 
 1. Analyst opens Budget Explorer.
 2. Analyst clicks `Propose edit` on a budget item.
 3. Analyst submits changed fields and a reason.
-4. Admin opens Budget Explorer.
-5. Admin approves or rejects the pending change.
+4. Admin opens the pending Change Requests queue.
+5. Admin approves or rejects the proposal.
 6. If approved, the official budget item is updated.
 
 ## Tech Stack
 
-- Frontend: Next.js 14, React, Tailwind CSS
-- Backend: Express.js
-- Database: MongoDB with Mongoose
-- Authentication: JWT
-- Password security: bcryptjs
+- **Frontend:** Next.js 14 (App Router), React, Tailwind CSS, Recharts, lucide-react
+- **Backend:** Express.js (dual-mode: MongoDB when available, in-memory fallback otherwise)
+- **Database:** MongoDB with Mongoose
+- **Authentication:** JWT + bcryptjs
+- **Email:** Nodemailer (welcome, OTP verification, password reset, notices)
+- **AI:** Google Gemini (plain-language briefs)
 
 ## Setup
 
@@ -66,8 +74,24 @@ Install dependencies:
 npm install
 ```
 
-Create `.env` in the project root:
+Copy the environment template and fill in real values:
 
+```bash
+cp .env.example .env
+```
+
+`.env` needs:
+
+| Variable | Purpose |
+|---|---|
+| `PORT` | Express API port (default `5000`) |
+| `MONGODB_URI` | MongoDB connection string — omit or leave unreachable to run in memory mode |
+| `MONGODB_DB` | Database name |
+| `JWT_SECRET` | Any long random string used to sign auth tokens |
+| `GEMINI_API_KEY` | Google Gemini API key, for AI Briefs |
+| `EMAIL_SERVICE` | e.g. `gmail` |
+| `EMAIL_USER` | Sender email address |
+| `EMAIL_PASS` | App password for that email account (not your normal login password) |
 
 Start the app:
 
@@ -87,18 +111,6 @@ Check API/database status:
 http://localhost:5000/api/health
 ```
 
-Expected MongoDB response:
-
-```json
-{"ok":true,"database":"mongo"}
-```
-
-If MongoDB is not available, the app falls back to memory mode:
-
-```json
-{"ok":true,"database":"memory"}
-```
-
 Memory mode is temporary. Data disappears when the server restarts.
 
 ## MongoDB Compass
@@ -115,18 +127,24 @@ After signup/login, refresh Compass and open:
 govinsight-nepal
 ```
 
-Important collections:
+Collections:
 
 - `users`
-- `documents`
+- `incidentreports` — citizen-reported civic issues
 - `budgetitems`
-- `projects`
-- `activities`
 - `changerequests`
+- `authorities`
+- `wardunits`
+- `notices`
+- `notifications`
+- `reviews`
+- `projects`
+- `documents`
+- `activities`
 
 ## Useful Scripts
 
-Run development server:
+Run development server (frontend + backend together):
 
 ```bash
 npm run dev
@@ -150,6 +168,10 @@ Run Next frontend only:
 npm run client
 ```
 
-## First Use
+## Demo accounts
 
-The first registered account becomes Admin. After login, sample budget data is seeded automatically so the dashboard, analytics, budget explorer, and department pages are not empty.
+Quick demo accounts — the first login attempt with one of these emails auto-creates the account with whatever password you type, so pick a password and remember it for next time:
+
+- `admin@govinsight.np`
+- `analyst@govinsight.np`
+- `researcher@govinsight.np`
