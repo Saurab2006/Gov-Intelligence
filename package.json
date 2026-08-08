@@ -1,35 +1,17 @@
 {
   "name": "govinsight-nepal",
   "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "node server/index.js",
-    "client": "next dev --port 3000",
-    "build": "next build",
-    "start": "node server/index.js & next start --port 3000",
+    "server": "npm run dev --workspace backend",
+    "client": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend",
+    "start": "npm run start --workspace backend & npm run start --workspace frontend",
     "typecheck": "echo ok"
-  },
-  "dependencies": {
-    "@tailwindcss/forms": "^0.5.11",
-    "autoprefixer": "^10.5.4",
-    "bcryptjs": "^3.0.3",
-    "clsx": "^2.1.1",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "framer-motion": "^11.18.2",
-    "jsonwebtoken": "^9.0.3",
-    "lucide-react": "^1.28.0",
-    "mongoose": "^9.9.0",
-    "next": "^14.2.29",
-    "postcss": "^8.5.25",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-hook-form": "^7.83.0",
-    "recharts": "^3.10.1",
-    "sonner": "^2.0.7",
-    "tailwind-merge": "^3.6.0",
-    "tailwindcss": "^3.4.17"
   },
   "devDependencies": {
     "concurrently": "^10.0.4"

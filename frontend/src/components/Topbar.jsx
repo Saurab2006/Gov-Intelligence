@@ -5,9 +5,7 @@ import Link from 'next/link';
 import NotificationBell from './NotificationBell';
 import { CivicLogo } from './CivicBrand';
 
-// Desktop navigation now lives in the sidebar (with the profile + sign out
-// pinned to its bottom) and each page renders its own header, so this bar
-// only needs to exist on mobile where the sidebar is hidden.
+
 export default function Topbar() {
   const { user, logout } = useAuth();
   if (!user) return null;
